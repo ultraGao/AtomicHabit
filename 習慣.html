@@ -1,0 +1,719 @@
+
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>原子習慣追蹤器</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* 設置深色背景 */
+            color: #e2e8f0;
+        }
+        /* 自定義捲軸，以提升行動裝置上的視覺體驗 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+    </style>
+    <!-- PWA 相關 META 標籤，讓 iOS 支援全螢幕模式 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="原子習慣">
+    <!-- 佔位圖標，實際應用中應替換為真實圖片 -->
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/4f46e5/ffffff?text=AH">
+    <!-- Manifest Link (由 JS 注入) -->
+    <link rel="manifest" id="manifest-link">
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: Define global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-atomic-habit-tracker';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Global Firebase instances and state
+        let app = null;
+        let db = null;
+        let auth = null;
+        let userId = null;
+        let isAuthReady = false;
+        let currentStep = 0;
+        let tempFormData = {}; // 在多步驟流程中暫時儲存資料
+
+        // 設置日誌級別以進行調試
+        setLogLevel('Debug');
+
+        // PWA 設置函數 (僅處理 Manifest，移除 Service Worker)
+        const setupPWA = () => {
+            // 1. 嵌入 Web App Manifest
+            const manifest = {
+                "name": "原子習慣追蹤器",
+                "short_name": "原子習慣",
+                "description": "讓好習慣顯而易見、輕而易舉、有吸引力、令人滿意。",
+                "start_url": ".",
+                "display": "standalone",
+                "background_color": "#0f172a",
+                "theme_color": "#4f46e5",
+                "icons": [
+                    {
+                        "src": "https://placehold.co/192x192/4f46e5/ffffff?text=AH",
+                        "sizes": "192x192",
+                        "type": "image/png"
+                    },
+                    {
+                        "src": "https://placehold.co/512x512/4f46e5/ffffff?text=AH",
+                        "sizes": "512x512",
+                        "type": "image/png"
+                    }
+                ]
+            };
+            
+            // 將 Manifest 注入到 DOM 中
+            const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+            const manifestURL = URL.createObjectURL(manifestBlob);
+            document.getElementById('manifest-link').setAttribute('href', manifestURL);
+
+            // 備註：由於環境限制，Service Worker 註冊已移除。
+        };
+        // PWA 設置函數結束
+
+        // 定義多步驟表單的步驟
+        const STEPS = [
+            {
+                id: 'identity-goal',
+                label: '身份目標 (法則 1: 讓它顯而易見)',
+                placeholder: '例如：我是一位讀者',
+                subtext: '你想成為什麼樣的人？ (身分認同/方向)',
+                type: 'text',
+                required: true,
+                nextHint: '下一步：設定執行時間/地點 (法則 1)', // 法則 1, 第二部分
+            },
+            {
+                id: 'reminder-time',
+                label: '提醒時間 (法則 1: 讓它顯而易見)',
+                placeholder: '19:00',
+                subtext: '何時何地要做？ (建立執行意圖)',
+                type: 'time',
+                required: false,
+                nextHint: '下一步：設定你的最小行動 (法則 3)', // 法則 3
+            },
+            {
+                id: 'habit-name',
+                label: '習慣行為 (法則 3: 讓它輕而易舉)',
+                placeholder: '例如：閱讀一頁書',
+                subtext: '你的最小啟動習慣行為是什麼？ (越小越好！)',
+                type: 'text',
+                required: true,
+                nextHint: '下一步：設定立即獎賞 (法則 2)', // 法則 2
+            },
+            {
+                id: 'habit-reward',
+                label: '立即獎賞 (法則 2: 讓它有吸引力)',
+                placeholder: '例如：完成後可以看一集 Netflix',
+                subtext: '做完之後的立即獎賞是什麼？ (搭配獎勵)',
+                type: 'text',
+                required: false,
+                nextHint: '下一步：設定長期稱號 (法則 4)', // 法則 4
+            },
+            {
+                id: 'streak-title',
+                label: '里程碑稱號 (法則 4: 讓它令人滿意)',
+                placeholder: '例如：自律的鐵人 / 習慣大師',
+                subtext: '連續完成 21 天後想獲得的稱號/獎勵是什麼？',
+                type: 'text',
+                required: false,
+                nextHint: '點擊提交完成習慣設定',
+                isLastStep: true,
+            },
+        ];
+
+        /**
+         * 將日期物件轉換為 YYYY-MM-DD 格式的字串。
+         * @param {Date} date
+         * @returns {string}
+         */
+        const formatDate = (date) => {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+
+        /**
+         * 計算當前連續天數和今日完成狀態。
+         * @param {string[]} history Array of YYYY-MM-DD dates.
+         * @returns {{streak: number, completedToday: boolean}}
+         */
+        const calculateStreak = (history) => {
+            if (!history || history.length === 0) {
+                return { streak: 0, completedToday: false };
+            }
+            
+            // 使用清晰、標準的方式計算連續天數
+            const todayStr = formatDate(new Date());
+            const isCompletedToday = history.includes(todayStr);
+
+            let currentStreak = 0;
+            let d = new Date(); // 從今天開始檢查
+            
+            // 1. 如果今天完成了，連續天數從 1 開始，然後檢查昨天
+            if (isCompletedToday) {
+                currentStreak = 1;
+                d.setDate(d.getDate() - 1); // 檢查昨天
+            } else {
+                // 2. 如果今天沒有完成，連續天數為 0
+                return { streak: 0, completedToday: isCompletedToday };
+            }
+            
+            // 迴圈往回檢查
+            for (let i = 0; i < 365; i++) {
+                const dateToCheck = formatDate(d);
+                if (history.includes(dateToCheck)) {
+                    currentStreak++;
+                } else {
+                    // 發現間隔，連續天數中斷
+                    break;
+                }
+                d.setDate(d.getDate() - 1); // 再往回一天
+            }
+            
+            return { streak: currentStreak, completedToday: isCompletedToday };
+        };
+
+
+        /**
+         * 渲染 Firestore 中的習慣清單。
+         * @param {Object[]} habits Array of habit objects.
+         */
+        const renderHabits = (habits) => {
+            const habitList = document.getElementById('habit-list');
+            const noHabits = document.getElementById('no-habits');
+            habitList.innerHTML = ''; // 清除現有清單
+
+            if (!habits || habits.length === 0) {
+                noHabits.classList.remove('hidden');
+                return;
+            }
+            noHabits.classList.add('hidden');
+
+            habits.forEach(habit => {
+                const { streak, completedToday } = calculateStreak(habit.history);
+                const buttonColor = completedToday ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700';
+                const buttonText = completedToday ? '今日已完成 ✅' : '標記完成';
+                const streakColor = streak > 0 ? 'text-green-400' : 'text-gray-400';
+                
+                // 連續稱號邏輯
+                const hasAchievedTitle = streak >= 21;
+                const streakTitleText = habit.streakTitle || '未設定稱號';
+
+                const achievementStatus = hasAchievedTitle 
+                    ? `<span class="bg-yellow-500 text-gray-900 px-2 py-0.5 rounded-full text-xs font-semibold">🎉 已達成！ ${streakTitleText}</span>`
+                    : `<span class="text-gray-400 text-sm">目標稱號：${streakTitleText}</span>`;
+
+
+                const card = `
+                    <div class="bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg flex flex-col space-y-3 transition duration-300 ease-in-out hover:shadow-2xl">
+                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start">
+                            <!-- 身份認同 (Identity) -->
+                            <div class="mb-2 sm:mb-0">
+                                <p class="text-sm font-light text-indigo-400">
+                                    身份目標:
+                                </p>
+                                <p class="text-xl font-semibold">${habit.identity}</p>
+                            </div>
+                            <!-- 連續天數 (Streak) -->
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xs font-medium text-gray-400">連續:</span>
+                                <span class="text-3xl font-extrabold ${streakColor}">${streak}</span>
+                                <span class="text-xl font-extrabold ${streakColor}">天</span>
+                            </div>
+                        </div>
+
+                        <!-- 習慣 (Habit) - 最小啟動門檻 -->
+                        <p class="text-lg text-gray-200 border-l-4 pl-3 border-indigo-500/50">
+                            ${habit.name}
+                        </p>
+                        
+                        <!-- 獎賞與提醒顯示 -->
+                        <div class="flex flex-col sm:flex-row sm:space-x-8 space-y-2 sm:space-y-0 text-sm text-gray-400 pt-1 border-t border-gray-700/50">
+                            <!-- 預期獎賞 (法則 2) -->
+                            <div class="flex items-center space-x-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-400 min-w-4"><path d="M12 2a3 3 0 0 0-3 3v7c0 1.66 1.34 3 3 3s3-1.34 3-3V5a3 3 0 0 0-3-3z"/><path d="M16 12h2l-2 5h-4l-2-5h2"/><path d="M12 18v4"/><path d="M9 21h6"/></svg>
+                                <span class="truncate">獎賞: ${habit.reward || '無'}</span>
+                            </div>
+                            <!-- 提醒時間 (法則 1) -->
+                            <div class="flex items-center space-x-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-400 min-w-4"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                <span>提醒時間: ${habit.reminderTime || '未設定'}</span>
+                            </div>
+                        </div>
+                        <!-- 獎賞與提醒顯示結束 -->
+                        
+                        <!-- 21天稱號目標顯示 -->
+                        <div class="pt-2 border-t border-gray-700/50 flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-500 min-w-4"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                                ${achievementStatus}
+                            </div>
+                        </div>
+
+                        <div class="pt-2 flex justify-between items-center">
+                            <!-- 標記完成按鈕 (法則 4) -->
+                            <button data-id="${habit.id}" data-history='${JSON.stringify(habit.history)}'
+                                class="toggle-habit-btn ${buttonColor} text-white font-bold py-2 px-4 rounded-full transition duration-150 ease-in-out shadow-md disabled:opacity-50"
+                                ${completedToday ? 'disabled' : ''}>
+                                ${buttonText}
+                            </button>
+                            <!-- 移除按鈕 -->
+                            <button data-id="${habit.id}" class="remove-habit-btn text-red-400 hover:text-red-500 text-sm p-2 rounded-full transition duration-150 ease-in-out">
+                                移除
+                            </button>
+                        </div>
+                    </div>
+                `;
+                habitList.insertAdjacentHTML('beforeend', card);
+            });
+
+            // 重新附加事件監聽器
+            document.querySelectorAll('.toggle-habit-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const id = e.currentTarget.getAttribute('data-id');
+                    const history = JSON.parse(e.currentTarget.getAttribute('data-history'));
+                    toggleHabit(id, history);
+                });
+            });
+
+            document.querySelectorAll('.remove-habit-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const id = e.currentTarget.getAttribute('data-id');
+                    // 使用瀏覽器內建的 confirm 替代方案
+                    if (!window.confirm("確定要移除這個習慣嗎？所有進度將會遺失。")) {
+                         return;
+                    }
+                    removeHabit(id);
+                });
+            });
+        };
+
+        /**
+         * 設置習慣的實時監聽器。
+         */
+        const loadHabits = () => {
+            if (!db || !userId) {
+                console.error("Firestore 或使用者 ID 尚未初始化。");
+                return;
+            }
+
+            // 路徑: /artifacts/{appId}/users/{userId}/habits
+            const habitsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/habits`);
+            
+            // 監聽實時變化
+            onSnapshot(habitsCollectionRef, (snapshot) => {
+                const habits = [];
+                snapshot.forEach(doc => {
+                    habits.push({ id: doc.id, ...doc.data(), history: doc.data().history || [] });
+                });
+                renderHabits(habits);
+            }, (error) => {
+                console.error("監聽習慣集合時發生錯誤:", error);
+                document.getElementById('feedback').textContent = "載入習慣資料時發生錯誤。";
+            });
+        };
+
+        /**
+         * 新增一個習慣。
+         * @param {string} name - 最小、容易的習慣名稱。
+         * @param {string} identity - 身份目標。
+         * @param {string} reward - 預期的獎賞。
+         * @param {string} reminderTime - 首選時間 (HH:MM)。
+         * @param {string} streakTitle - 21 天連續稱號。
+         */
+        const addHabit = async (name, identity, reward, reminderTime, streakTitle) => {
+            if (!db || !userId) return;
+
+            const newHabit = {
+                name: name || '未命名習慣',
+                identity: identity || '未設定身份目標',
+                reward: reward || '無', 
+                reminderTime: reminderTime || '未設定',
+                streakTitle: streakTitle || '習慣新人',
+                history: [], // Array of YYYY-MM-DD dates completed
+                createdAt: new Date(),
+            };
+
+            try {
+                const habitsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/habits`);
+                await addDoc(habitsCollectionRef, newHabit);
+                document.getElementById('feedback').textContent = "✅ 習慣已成功建立！";
+                setTimeout(() => document.getElementById('feedback').textContent = '', 3000);
+            } catch (e) {
+                console.error("新增文件時發生錯誤: ", e);
+                document.getElementById('feedback').textContent = "⚠️ 新增習慣失敗。";
+            }
+        };
+
+        /**
+         * 切換習慣今天的完成狀態。
+         * @param {string} habitId 
+         * @param {string[]} currentHistory 
+         */
+        const toggleHabit = async (habitId, currentHistory) => {
+            if (!db || !userId) return;
+            
+            const todayStr = formatDate(new Date());
+            const habitDocRef = doc(db, `artifacts/${appId}/users/${userId}/habits`, habitId);
+            
+            // 檢查今天是否已完成
+            const isCompleted = currentHistory.includes(todayStr);
+
+            let newHistory;
+            let feedbackMsg;
+            
+            if (!isCompleted) {
+                // 標記為完成 (新增到歷史記錄)
+                newHistory = [...currentHistory, todayStr];
+                feedbackMsg = "🎉 恭喜！今天已完成！";
+            } else {
+                // 不應發生，因為按鈕會被禁用，但為了安全：從歷史記錄中移除 (取消完成)
+                newHistory = currentHistory.filter(date => date !== todayStr);
+                feedbackMsg = "已取消今天的完成狀態。";
+            }
+
+            try {
+                // 使用 updateDoc
+                await updateDoc(habitDocRef, {
+                    history: newHistory.sort() // 保持歷史記錄排序以便於連續計算
+                });
+
+                // 顯示成功回饋
+                document.getElementById('feedback').textContent = feedbackMsg;
+                setTimeout(() => document.getElementById('feedback').textContent = '', 3000);
+                
+            } catch (e) {
+                console.error("更新文件時發生錯誤: ", e);
+                document.getElementById('feedback').textContent = "⚠️ 更新狀態失敗。";
+            }
+        };
+
+        /**
+         * 移除一個習慣。
+         * @param {string} habitId 
+         */
+        const removeHabit = async (habitId) => {
+             if (!db || !userId) return;
+             
+             try {
+                const habitDocRef = doc(db, `artifacts/${appId}/users/${userId}/habits`, habitId);
+                await deleteDoc(habitDocRef); // 永久刪除
+                document.getElementById('feedback').textContent = "🗑️ 習慣已移除。";
+                setTimeout(() => document.getElementById('feedback').textContent = '', 3000);
+            } catch (e) {
+                console.error("移除文件時發生錯誤: ", e);
+                document.getElementById('feedback').textContent = "⚠️ 移除習慣失敗。";
+            }
+        };
+
+
+        /**
+         * 渲染當前步驟的內容。
+         * @param {number} stepIndex
+         */
+        const renderStep = (stepIndex) => {
+            const stepContent = document.getElementById('step-content');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const progressIndicator = document.getElementById('progress-indicator');
+            const feedbackElement = document.getElementById('feedback-hint');
+            const step = STEPS[stepIndex];
+
+            if (!step) return;
+
+            // --- 1. 渲染內容 ---
+            // 為時間輸入設置預設值，否則使用儲存的資料
+            const initialValue = step.type === 'time' && !tempFormData[step.id] ? '19:00' : tempFormData[step.id] || '';
+
+            let inputHtml;
+            if (step.type === 'time') {
+                inputHtml = `
+                    <input type="time" id="${step.id}" value="${initialValue}" step="300"
+                           class="w-full px-4 py-3 rounded-lg bg-gray-600 border border-gray-500 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
+                `;
+            } else {
+                inputHtml = `
+                    <input type="text" id="${step.id}" placeholder="${step.placeholder}" value="${initialValue}" ${step.required ? 'required' : ''}
+                           class="w-full px-4 py-3 rounded-lg bg-gray-600 border border-gray-500 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
+                `;
+            }
+            
+            stepContent.innerHTML = `
+                <div class="animate-in fade-in slide-in-from-right-1 duration-300">
+                    <label for="${step.id}" class="block text-sm font-medium text-gray-300 mb-1">${step.label}</label>
+                    ${inputHtml}
+                    <p class="text-xs text-gray-400 mt-1">${step.subtext}</p>
+                </div>
+            `;
+            
+            // 設置焦點到輸入欄位
+            document.getElementById(step.id)?.focus();
+
+
+            // --- 2. 渲染進度指示器 ---
+            progressIndicator.innerHTML = STEPS.map((s, index) => `
+                <div class="w-3 h-3 rounded-full transition-colors duration-300 ${index === stepIndex ? 'bg-indigo-500' : 'bg-gray-500'}"></div>
+            `).join('');
+
+            // --- 3. 更新導航按鈕和提示 ---
+            prevBtn.disabled = stepIndex === 0;
+            
+            nextBtn.textContent = step.isLastStep ? '提交並開始追蹤' : '下一步';
+            nextBtn.classList.toggle('bg-indigo-600', !step.isLastStep);
+            nextBtn.classList.toggle('hover:bg-indigo-700', !step.isLastStep);
+            nextBtn.classList.toggle('bg-green-600', step.isLastStep);
+            nextBtn.classList.toggle('hover:bg-green-700', step.isLastStep);
+
+            feedbackElement.textContent = step.nextHint;
+        };
+
+        /**
+         * 處理驗證、儲存資料並前進到下一步。
+         */
+        const handleNext = () => {
+            const currentStepData = STEPS[currentStep];
+            const inputElement = document.getElementById(currentStepData.id);
+            const feedbackElement = document.getElementById('feedback');
+            
+            // 驗證
+            if (currentStepData.required && (!inputElement || !inputElement.value.trim())) {
+                feedbackElement.textContent = `⚠️ 請輸入 ${currentStepData.label.split('(')[0].trim()}。`;
+                setTimeout(() => feedbackElement.textContent = '', 3000);
+                return;
+            }
+            
+            // 儲存值
+            tempFormData[currentStepData.id] = inputElement ? inputElement.value.trim() : '';
+
+            if (currentStepData.isLastStep) {
+                // 最後一步：提交習慣
+                const name = tempFormData['habit-name'];
+                const identity = tempFormData['identity-goal'];
+                const reward = tempFormData['habit-reward'];
+                const reminderTime = tempFormData['reminder-time'];
+                const streakTitle = tempFormData['streak-title'];
+                
+                // 最終提交邏輯
+                addHabit(name, identity, reward, reminderTime, streakTitle);
+
+                // 提交成功後重設狀態並關閉表單
+                currentStep = 0;
+                tempFormData = {};
+                toggleNewHabitForm(false);
+                return;
+
+            } else {
+                // 移動到下一步
+                currentStep++;
+                renderStep(currentStep);
+            }
+        };
+
+        /**
+         * 處理移動到上一步。
+         */
+        const handlePrevious = () => {
+            if (currentStep > 0) {
+                currentStep--;
+                renderStep(currentStep);
+            }
+        };
+
+        /**
+         * 切換新增習慣表單的可見性。
+         * @param {boolean} [force=undefined] - 強制狀態 (true 為顯示, false 為隱藏)。
+         */
+        const toggleNewHabitForm = (force) => {
+            const formContainer = document.getElementById('new-habit-form-container');
+            const button = document.getElementById('toggle-form-btn');
+            
+            const isHidden = formContainer.classList.contains('max-h-0');
+            let newState = force !== undefined ? force : isHidden;
+
+            if (newState) {
+                formContainer.classList.remove('max-h-0', 'invisible', 'opacity-0');
+                formContainer.classList.add('max-h-96', 'opacity-100');
+                button.textContent = '取消建立';
+                button.classList.remove('bg-green-600');
+                button.classList.add('bg-gray-600');
+                
+                // 打開表單時重設並渲染第 0 步
+                currentStep = 0;
+                tempFormData = {};
+                renderStep(currentStep);
+
+            } else {
+                formContainer.classList.remove('max-h-96', 'opacity-100');
+                formContainer.classList.add('max-h-0', 'invisible', 'opacity-0');
+                button.textContent = '➕ 建立新習慣';
+                button.classList.remove('bg-gray-600');
+                button.classList.add('bg-green-600');
+            }
+        };
+
+
+        /**
+         * 主要初始化函數。
+         */
+        const initFirebaseAndApp = () => {
+            if (!Object.keys(firebaseConfig).length) {
+                console.error("Firebase 配置遺失。無法初始化 Firebase。");
+                document.getElementById('app-status').textContent = "⚠️ 錯誤：Firebase 配置遺失。";
+                return;
+            }
+
+            try {
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                document.getElementById('app-status').textContent = "應用程式狀態: 初始化中...";
+                
+                // 1. 認證 (自定義 Token 或匿名)
+                const authenticate = async () => {
+                    try {
+                        if (initialAuthToken) {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            await signInAnonymously(auth);
+                        }
+                    } catch (error) {
+                        console.error("認證失敗:", error);
+                        document.getElementById('app-status').textContent = `❌ 認證失敗: ${error.code}`;
+                        try {
+                             await signInAnonymously(auth);
+                        } catch(anonError) {
+                            console.error("匿名登入也失敗了:", anonError);
+                        }
+                    }
+                };
+
+                // 2. 認證狀態監聽器 (在載入資料前獲取 userId 至關重要)
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        document.getElementById('app-status').textContent = "應用程式狀態: 連線成功";
+                        document.getElementById('user-id-display').textContent = `使用者 ID: ${userId}`;
+                        loadHabits(); // 認證後開始監聽資料變化
+                    } else {
+                        if (userId === null) {
+                            document.getElementById('app-status').textContent = "應用程式狀態: 登入中...";
+                        }
+                    }
+                });
+                
+                // 開始認證流程
+                authenticate();
+
+            } catch (error) {
+                console.error("Firebase 初始化失敗:", error);
+                document.getElementById('app-status').textContent = `❌ 初始化失敗: ${error.message}`;
+            }
+
+        };
+
+        window.onload = () => {
+            setupPWA(); // 初始化 PWA Manifest
+            initFirebaseAndApp();
+            
+            // --- 多步驟表單處理 ---
+            document.getElementById('new-habit-form').addEventListener('submit', (e) => e.preventDefault()); // 防止預設提交行為
+            document.getElementById('toggle-form-btn').addEventListener('click', () => toggleNewHabitForm());
+            
+            // 附加下一步/上一步監聽器
+            document.getElementById('next-btn').addEventListener('click', handleNext);
+            document.getElementById('prev-btn').addEventListener('click', handlePrevious);
+            
+            // 應用程式載入時初始化表單視圖 (初始為隱藏)
+            renderStep(currentStep); 
+        };
+
+    </script>
+</head>
+<body class="min-h-screen p-4 sm:p-6 pb-20">
+    <div class="max-w-xl mx-auto">
+        <header class="text-center mb-6 pt-4">
+            <h1 class="text-3xl font-extrabold text-white mb-1">原子習慣追蹤器</h1>
+            <p class="text-indigo-400 text-sm">讓好習慣變得顯而易見、有吸引力、輕而易舉、令人滿意。</p>
+        </header>
+
+        <!-- 建立新習慣區域 -->
+        <div class="mb-6">
+            <button id="toggle-form-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition duration-300 shadow-lg">
+                ➕ 建立新習慣
+            </button>
+
+            <!-- 新習慣表單 (使用過渡效果) -->
+            <div id="new-habit-form-container" class="mt-4 overflow-hidden transition-all duration-500 ease-in-out max-h-0 opacity-0 invisible">
+                <form id="new-habit-form" class="bg-gray-700 p-4 rounded-xl shadow-inner space-y-4">
+                    
+                    <!-- 進度指示器 -->
+                    <div id="progress-indicator" class="flex justify-center space-x-2 pb-4 pt-1"></div>
+                    
+                    <!-- 動態步驟內容 -->
+                    <div id="step-content">
+                        <!-- 內容將由 JavaScript 注入 -->
+                    </div>
+                    
+                    <!-- 導航與提示 -->
+                    <div class="pt-4 border-t border-gray-600">
+                        <!-- 下一步提示 -->
+                        <p id="feedback-hint" class="text-center text-sm font-medium text-indigo-300 mb-3"></p>
+                        
+                        <div class="flex justify-between">
+                            <button type="button" id="prev-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 disabled:opacity-30">
+                                上一步
+                            </button>
+                            <button type="button" id="next-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-full transition duration-300">
+                                下一步
+                            </button>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+        <!-- 習慣列表 -->
+        <h2 class="text-2xl font-bold text-white mb-4 border-b border-gray-700 pb-2">我的習慣清單</h2>
+        <div id="habit-list" class="space-y-4">
+            <!-- 習慣卡片將在此處由 JavaScript 渲染 -->
+        </div>
+
+        <!-- 無習慣提示 -->
+        <div id="no-habits" class="text-center p-8 bg-gray-800 rounded-xl shadow-lg mt-6 hidden">
+            <p class="text-gray-400 mb-3">你還沒有建立任何習慣！</p>
+            <p class="text-white font-medium">點擊上方的「➕ 建立新習慣」來開始你的改變吧。</p>
+        </div>
+
+        <!-- 應用程式狀態和回饋 -->
+        <div class="fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm p-3 border-t border-indigo-700">
+            <!-- 全域回饋區域 -->
+            <p id="feedback" class="text-center h-5 text-sm font-medium text-yellow-400 mb-1"></p>
+            <p id="app-status" class="text-xs text-gray-500 text-center">應用程式狀態: 載入中...</p>
+            <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
+        </div>
+    </div>
+</body>
+</html>
