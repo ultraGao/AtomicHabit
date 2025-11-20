@@ -714,30 +714,29 @@
             <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
         </div>
     </div>
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
 
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-    apiKey: "AIzaSyD4ByDjqEw1pMJhoiREw-Wuyl-pTRBJxkQ",
-    authDomain: "atomichabit-12ddf.firebaseapp.com",
-    projectId: "atomichabit-12ddf",
-    storageBucket: "atomichabit-12ddf.firebasestorage.app",
-    messagingSenderId: "89540241468",
-    appId: "1:89540241468:web:d8a64ab6fe55d6e3553b39",
-    measurementId: "G-SRVCMGVDR8"
-  };
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyD4ByDjqEw1pMJhoiREw-Wuyl-pTRBJxkQ",
+  authDomain: "atomichabit-12ddf.firebaseapp.com",
+  projectId: "atomichabit-12ddf",
+  storageBucket: "atomichabit-12ddf.firebasestorage.app",
+  messagingSenderId: "89540241468",
+  appId: "1:89540241468:web:d8a64ab6fe55d6e3553b39",
+  measurementId: "G-SRVCMGVDR8"
+};
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 </body>
 </html>
+
 
 
