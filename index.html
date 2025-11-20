@@ -2,7 +2,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>原子習慣追蹤器</title>
+    <title>我不當過(動)兒啦~</title>
     <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -714,6 +714,30 @@
             <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
         </div>
     </div>
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyD4ByDjqEw1pMJhoiREw-Wuyl-pTRBJxkQ",
+    authDomain: "atomichabit-12ddf.firebaseapp.com",
+    projectId: "atomichabit-12ddf",
+    storageBucket: "atomichabit-12ddf.firebasestorage.app",
+    messagingSenderId: "89540241468",
+    appId: "1:89540241468:web:d8a64ab6fe55d6e3553b39",
+    measurementId: "G-SRVCMGVDR8"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
 </body>
 </html>
+
 
