@@ -714,29 +714,66 @@
             <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
         </div>
     </div>
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的習慣應用程式</title>
+</head>
+<body>
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqZr3Eof916U",
-  authDomain: "habitkeeper-87e88.firebaseapp.com",
-  projectId: "habitkeeper-87e88",
-  storageBucket: "habitkeeper-87e88.firebasestorage.app",
-  messagingSenderId: "773693972402",
-  appId: "1:773693972402:web:23ae51483f3e1a4926ceab",
-  measurementId: "G-5X5WNFN4X6"
-};
+    <h1>歡迎來到我的習慣應用程式！</h1>
+    <!-- 你的網頁內容會在這裡 -->
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+    <!-- Firebase SDK - 兼容版本 -->
+    <!-- 這是 Firebase 核心應用程式 SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <!-- 這是 Firebase Authentication SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <!-- 這是 Cloud Firestore SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <!-- 這是 Firebase Cloud Messaging SDK (FCM) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
+    <!-- 這是 Firebase Analytics SDK (如果你需要) -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js"></script>
+
+    <script>
+        // 你的 Firebase 設定資訊
+        // 這些值是你從 Firebase 控制台複製過來的，每個專案都不同
+        const firebaseConfig = {
+          apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqazr3Eof916U", // 請確認這是你自己的apiKey
+          authDomain: "habitkeeper-87e88.firebaseapp.com",
+          projectId: "habitkeeper-87e88",
+          storageBucket: "habitkeeper-87e88.firebasestorage.app",
+          messagingSenderId: "773693972402",
+          appId: "1:773693972402:web:23ae51483f3e1a4926ceab",
+          measurementId: "G-5X5WNFN4X6"
+        };
+
+        // 初始化 Firebase 應用程式
+        firebase.initializeApp(firebaseConfig);
+
+        // 取得你將會使用的 Firebase 服務實例
+        // 你可以把這些變數用在你的網頁程式碼中，來呼叫 Firebase 的功能
+        const auth = firebase.auth();           // 用於使用者認證
+        const db = firebase.firestore();        // 用於資料庫操作
+        const messaging = firebase.messaging(); // 用於推播通知
+        const analytics = firebase.analytics(); // 用於網站分析
+
+        // 你現在可以在這裡開始編寫你的網頁互動程式碼了！
+        // 例如，一個簡單的登入按鈕：
+        // document.getElementById('loginButton').addEventListener('click', () => {
+        //   const provider = new firebase.auth.GoogleAuthProvider();
+        //   auth.signInWithPopup(provider);
+        // });
+    </script>
 </body>
 </html>
+
+</body>
+</html>
+
 
 
 
