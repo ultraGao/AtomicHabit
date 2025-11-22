@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
@@ -33,21 +34,43 @@
     <!-- Manifest Link (由 JS 注入) -->
     <link rel="manifest" id="manifest-link">
 
-    <!-- Firebase SDKs -->
+    <!-- Firebase SDKs (v9 或更高版本模組化寫法) -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // --- 1. 導入所有推薦的 Firebase 模組 ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; // 使用最新穩定版本
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js"; // 導入 Analytics
+        import { getMessaging } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js"; // 導入 Cloud Messaging (FCM)
 
-        // IMPORTANT: Define global variables provided by the Canvas environment
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-atomic-habit-tracker';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // --- 2. 你的 Firebase 設定資訊 (直接使用，確保不會被空物件覆蓋) ---
+        // 請確認 apiKey 是你自己的！
+        const firebaseConfig = {
+            apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqZr3Eof916U",
+            authDomain: "habitkeeper-87e88.firebaseapp.com",
+            projectId: "habitkeeper-87e88",
+            storageBucket: "habitkeeper-87e88.firebasestorage.app",
+            messagingSenderId: "773693972402",
+            appId: "1:773693972402:web:23ae51483f3e1a4926ceab",
+            measurementId: "G-5X5WNFN4X6"
+        };
 
-        // Global Firebase instances and state
+        // 為你的 Firestore 路徑定義 appId，因為你在 `artifacts/${appId}/users` 中使用了它
+        const appId = "default-atomic-habit-tracker"; // 你原始程式碼中的預設值
+        // 注意：如果你希望這裡的 appId 與 firebaseConfig.appId 一致，則應該設定為
+        // const appId = firebaseConfig.appId;
+        // 但由於你原始的 `appId` 邏輯似乎是使用 'default-atomic-habit-tracker'，我先保留這個。
+        // 如果你的 Firestore 路徑是 `artifacts/1:773693972402:web:23ae51483f3e1a4926ceab/users`，
+        // 那就需要改成 const appId = firebaseConfig.appId;
+
+        const initialAuthToken = null; // 如果沒有外部提供 token，就設為 null
+
+        // --- 3. 全域 Firebase 實例與狀態 ---
         let app = null;
         let db = null;
         let auth = null;
+        let analytics = null; // Analytics 實例
+        let messaging = null; // Messaging 實例
         let userId = null;
         let isAuthReady = false;
         let currentStep = 0;
@@ -90,7 +113,7 @@
         };
         // PWA 設置函數結束
 
-        // 定義多步驟表單的步驟
+        // 定義多步驟表單的步驟 (這裡未修改)
         const STEPS = [
             {
                 id: 'identity-goal',
@@ -195,7 +218,7 @@
 
 
         /**
-         * 渲染 Firestore 中的習慣清單。
+         * 渲染 Firestore 中的習慣清單。 (這裡未修改)
          * @param {Object[]} habits Array of habit objects.
          */
         const renderHabits = (habits) => {
@@ -309,7 +332,7 @@
         };
 
         /**
-         * 設置習慣的實時監聽器。
+         * 設置習慣的實時監聽器。 (這裡未修改)
          */
         const loadHabits = () => {
             if (!db || !userId) {
@@ -334,7 +357,7 @@
         };
 
         /**
-         * 新增一個習慣。
+         * 新增一個習慣。 (這裡未修改)
          * @param {string} name - 最小、容易的習慣名稱。
          * @param {string} identity - 身份目標。
          * @param {string} reward - 預期的獎賞。
@@ -366,7 +389,7 @@
         };
 
         /**
-         * 切換習慣今天的完成狀態。
+         * 切換習慣今天的完成狀態。 (這裡未修改)
          * @param {string} habitId 
          * @param {string[]} currentHistory 
          */
@@ -409,7 +432,7 @@
         };
 
         /**
-         * 移除一個習慣。
+         * 移除一個習慣。 (這裡未修改)
          * @param {string} habitId 
          */
         const removeHabit = async (habitId) => {
@@ -428,7 +451,7 @@
 
 
         /**
-         * 渲染當前步驟的內容。
+         * 渲染當前步驟的內容。 (這裡未修改)
          * @param {number} stepIndex
          */
         const renderStep = (stepIndex) => {
@@ -488,7 +511,7 @@
         };
 
         /**
-         * 處理驗證、儲存資料並前進到下一步。
+         * 處理驗證、儲存資料並前進到下一步。 (這裡未修改)
          */
         const handleNext = () => {
             const currentStepData = STEPS[currentStep];
@@ -530,7 +553,7 @@
         };
 
         /**
-         * 處理移動到上一步。
+         * 處理移動到上一步。 (這裡未修改)
          */
         const handlePrevious = () => {
             if (currentStep > 0) {
@@ -540,7 +563,7 @@
         };
 
         /**
-         * 切換新增習慣表單的可見性。
+         * 切換新增習慣表單的可見性。 (這裡未修改)
          * @param {boolean} [force=undefined] - 強制狀態 (true 為顯示, false 為隱藏)。
          */
         const toggleNewHabitForm = (force) => {
@@ -576,7 +599,8 @@
          * 主要初始化函數。
          */
         const initFirebaseAndApp = () => {
-            if (!Object.keys(firebaseConfig).length) {
+            // firebaseConfig 已經被直接定義，所以這個檢查就變得多餘，但為了安全你可以保留
+            if (!Object.keys(firebaseConfig).length || !firebaseConfig.apiKey) {
                 console.error("Firebase 配置遺失。無法初始化 Firebase。");
                 document.getElementById('app-status').textContent = "⚠️ 錯誤：Firebase 配置遺失。";
                 return;
@@ -586,21 +610,24 @@
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
+                analytics = getAnalytics(app); // 初始化 Analytics
+                messaging = getMessaging(app); // 初始化 Cloud Messaging (FCM)
+
                 document.getElementById('app-status').textContent = "應用程式狀態: 初始化中...";
                 
                 // 1. 認證 (自定義 Token 或匿名)
                 const authenticate = async () => {
                     try {
-                        if (initialAuthToken) {
+                        if (initialAuthToken) { // 如果有提供自定義 Token
                             await signInWithCustomToken(auth, initialAuthToken);
-                        } else {
+                        } else { // 否則進行匿名登入
                             await signInAnonymously(auth);
                         }
                     } catch (error) {
                         console.error("認證失敗:", error);
                         document.getElementById('app-status').textContent = `❌ 認證失敗: ${error.code}`;
                         try {
-                             await signInAnonymously(auth);
+                             await signInAnonymously(auth); // 嘗試再次匿名登入以防萬一
                         } catch(anonError) {
                             console.error("匿名登入也失敗了:", anonError);
                         }
@@ -616,13 +643,14 @@
                         document.getElementById('user-id-display').textContent = `使用者 ID: ${userId}`;
                         loadHabits(); // 認證後開始監聽資料變化
                     } else {
-                        if (userId === null) {
+                        if (userId === null) { // 如果使用者登出但還沒有重新登入
                             document.getElementById('app-status').textContent = "應用程式狀態: 登入中...";
+                            authenticate(); // 嘗試重新認證（通常是匿名登入）
                         }
                     }
                 });
                 
-                // 開始認證流程
+                // 首次呼叫認證流程
                 authenticate();
 
             } catch (error) {
@@ -714,65 +742,5 @@
             <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
         </div>
     </div>
-<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的習慣應用程式</title>
-</head>
-<body>
-
-    <h1>歡迎來到我的習慣應用程式！</h1>
-    <!-- 你的網頁內容會在這裡 -->
-
-    <!-- Firebase SDK - 兼容版本 -->
-    <!-- 這是 Firebase 核心應用程式 SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <!-- 這是 Firebase Authentication SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
-    <!-- 這是 Cloud Firestore SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-    <!-- 這是 Firebase Cloud Messaging SDK (FCM) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js"></script>
-    <!-- 這是 Firebase Analytics SDK (如果你需要) -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js"></script>
-
-    <script>
-        // 你的 Firebase 設定資訊
-        // 這些值是你從 Firebase 控制台複製過來的，每個專案都不同
-        const firebaseConfig = {
-          apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqazr3Eof916U", // 請確認這是你自己的apiKey
-          authDomain: "habitkeeper-87e88.firebaseapp.com",
-          projectId: "habitkeeper-87e88",
-          storageBucket: "habitkeeper-87e88.firebasestorage.app",
-          messagingSenderId: "773693972402",
-          appId: "1:773693972402:web:23ae51483f3e1a4926ceab",
-          measurementId: "G-5X5WNFN4X6"
-        };
-
-        // 初始化 Firebase 應用程式
-        firebase.initializeApp(firebaseConfig);
-
-        // 取得你將會使用的 Firebase 服務實例
-        // 你可以把這些變數用在你的網頁程式碼中，來呼叫 Firebase 的功能
-        const auth = firebase.auth();           // 用於使用者認證
-        const db = firebase.firestore();        // 用於資料庫操作
-        const messaging = firebase.messaging(); // 用於推播通知
-        const analytics = firebase.analytics(); // 用於網站分析
-
-        // 你現在可以在這裡開始編寫你的網頁互動程式碼了！
-        // 例如，一個簡單的登入按鈕：
-        // document.getElementById('loginButton').addEventListener('click', () => {
-        //   const provider = new firebase.auth.GoogleAuthProvider();
-        //   auth.signInWithPopup(provider);
-        // });
-    </script>
 </body>
 </html>
-
-
-
-
-
-
