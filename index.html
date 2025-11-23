@@ -29,6 +29,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="原子習慣">
+    <!-- 為了更好的 PWA 兼容性，建議也加入 mobile-web-app-capable -->
+    <meta name="mobile-web-app-capable" content="yes">
     <!-- 佔位圖標，實際應用中應替換為真實圖片 -->
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/4f46e5/ffffff?text=AH">
     <!-- Manifest Link (由 JS 注入) -->
@@ -103,7 +105,7 @@
     </div>
 
     <!-- Firebase SDKs (v9 或更高版本模組化寫法) -->
-    <!-- 將此 script 區塊移動到 <body> 的最底部 -->
+    <!-- 此 script 區塊已移動到 <body> 的最底部，確保 DOM 元素已載入 -->
     <script type="module">
         // --- 1. 導入所有推薦的 Firebase 模組 ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; 
@@ -143,6 +145,7 @@
 
         setLogLevel('Debug');
 
+        // PWA 設置函數
         const setupPWA = () => {
             const manifest = {
                 "name": "原子習慣追蹤器",
@@ -162,6 +165,7 @@
             document.getElementById('manifest-link').setAttribute('href', manifestURL);
         };
 
+        // 日期格式化
         const formatDate = (date) => {
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -169,6 +173,7 @@
             return `${y}-${m}-${d}`;
         };
 
+        // 計算連續天數
         const calculateStreak = (history) => {
             if (!history || history.length === 0) { return { streak: 0, completedToday: false }; }
             const todayStr = formatDate(new Date());
@@ -187,6 +192,7 @@
             return { streak: currentStreak, completedToday: isCompletedToday };
         };
 
+        // 渲染習慣清單
         const renderHabits = (habits) => {
             const habitList = document.getElementById('habit-list');
             const noHabits = document.getElementById('no-habits');
@@ -350,6 +356,7 @@
             }
         };
 
+        // --- 定義 STEPS 陣列 ---
         const STEPS = [
             {
                 id: 'habit-goal',
@@ -417,7 +424,7 @@
             },
         ];
 
-        // ***** 修正 renderStep 函數，確保生成正確的 input 元素 *****
+        // --- 定義 renderStep 函數 (必須在它被呼叫之前定義) ---
         const renderStep = (stepIndex) => {
             const stepContent = document.getElementById('step-content');
             const prevBtn = document.getElementById('prev-btn');
@@ -428,7 +435,6 @@
 
             if (!step) return;
 
-            // 確保 initialValue 正確處理
             const initialValue = tempFormData[step.id] || (step.type === 'time' ? '19:00' : '');
 
             let inputHtml;
@@ -437,7 +443,7 @@
                     <input type="time" id="${step.id}" value="${initialValue}" step="300"
                            class="w-full px-4 py-3 rounded-lg bg-gray-600 border border-gray-500 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
                 `;
-            } else { // 預設為文字輸入框
+            } else { 
                 inputHtml = `
                     <input type="text" id="${step.id}" placeholder="${step.placeholder}" value="${initialValue}" ${step.required ? 'required' : ''}
                            class="w-full px-4 py-3 rounded-lg bg-gray-600 border border-gray-500 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
@@ -466,6 +472,7 @@
             feedbackElement.textContent = step.nextHint;
         };
 
+        // --- 定義 handleNext, handlePrevious, toggleNewHabitForm (必須在它被呼叫之前定義) ---
         const handleNext = () => {
             const currentStepData = STEPS[currentStep];
             const inputElement = document.getElementById(currentStepData.id);
@@ -527,11 +534,12 @@
                 formContainer.classList.remove('max-h-96', 'opacity-100');
                 formContainer.classList.add('max-h-0', 'invisible', 'opacity-0');
                 button.textContent = '➕ 建立新習慣';
-                button.classList.remove('bg-gray-600');
-                button.classList.add('bg-green-600');
+                button.classList.remove('bg-green-600');
+                button.classList.add('bg-gray-600');
             }
         };
         
+        // --- 定義 handleAuthAction, renderAuthUI (必須在它被呼叫之前定義) ---
         async function handleAuthAction() {
             const currentUser = auth.currentUser;
             const feedbackElement = document.getElementById('feedback');
@@ -593,6 +601,7 @@
             document.getElementById('auth-button')?.addEventListener('click', handleAuthAction);
         }
 
+        // --- 定義 initFirebaseAndApp 函數 (必須在它被呼叫之前定義) ---
         const initFirebaseAndApp = () => {
             if (!Object.keys(firebaseConfig).length || !firebaseConfig.apiKey) {
                 console.error("Firebase 配置遺失。無法初始化 Firebase。");
@@ -652,6 +661,7 @@
 
         };
 
+        // --- window.onload 函數，最後執行，負責綁定事件和啟動應用程式 ---
         window.onload = () => {
             setupPWA(); 
             initFirebaseAndApp();
@@ -662,7 +672,9 @@
             document.getElementById('next-btn').addEventListener('click', handleNext);
             document.getElementById('prev-btn').addEventListener('click', handlePrevious);
             
-            renderStep(currentStep); 
+            // 這裡不再呼叫 renderStep，因為 toggleNewHabitForm 會在展開時呼叫它
+            // 如果你希望在頁面載入時就看到第一個問題，可以將這行取消註解
+            // renderStep(currentStep); 
         };
 
     </script>
