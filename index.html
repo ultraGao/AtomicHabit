@@ -37,17 +37,16 @@
     <!-- Firebase SDKs (v9 或更高版本模組化寫法) -->
     <script type="module">
         // --- 1. 導入所有推薦的 Firebase 模組 ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; // 使用最新穩定版本
-        // 額外導入 GoogleAuthProvider 和 linkWithPopup
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, linkWithPopup } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; 
+        // 額外導入 GoogleAuthProvider, signInWithPopup, signOut
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, linkWithPopup, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js"; // 導入 Analytics
-        import { getMessaging } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js"; // 導入 Cloud Messaging (FCM)
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js"; 
+        import { getMessaging } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js"; 
 
         // --- 2. 你的 Firebase 設定資訊 (直接使用，確保不會被空物件覆蓋) ---
-        // 請確認 apiKey 是你自己的！
         const firebaseConfig = {
-            apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqZr3Eof916U",
+            apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqZr3Eof916U", // 請確認這是你自己的！
             authDomain: "habitkeeper-87e88.firebaseapp.com",
             projectId: "habitkeeper-87e88",
             storageBucket: "habitkeeper-87e88.firebasestorage.app",
@@ -58,8 +57,6 @@
 
         // 為你的 Firestore 路徑定義 appId
         // 修正：現在它會正確取得 firebaseConfig 中的 appId 值
-        // 如果你的 Firestore 路徑中的 `appId` 指的是 'default-atomic-habit-tracker' 等固定字串，
-        // 則保持 const appId = "default-atomic-habit-tracker";
         const appId = firebaseConfig.appId; 
 
         const initialAuthToken = null; 
@@ -74,6 +71,9 @@
         let isAuthReady = false;
         let currentStep = 0;
         let tempFormData = {};
+
+        // 初始化 Google 認證提供者 (只需一次)
+        const googleProvider = new GoogleAuthProvider();
 
         setLogLevel('Debug');
 
@@ -381,46 +381,78 @@
         };
         
         /**
-         * 將當前匿名帳戶連結到 Google 帳戶。
+         * 處理右上角認證按鈕的點擊事件 (登入 / 連結 / 登出)。
          */
-        async function linkGoogleAccount() {
-            const provider = new GoogleAuthProvider();
+        async function handleAuthAction() {
+            const currentUser = auth.currentUser;
             const feedbackElement = document.getElementById('feedback');
-            const linkGoogleBtn = document.getElementById('link-google-btn');
+            const authButton = document.getElementById('auth-button');
 
-            feedbackElement.textContent = "連結 Google 帳戶中...";
-            linkGoogleBtn.disabled = true;
+            authButton.disabled = true; // 操作期間禁用按鈕
+            feedbackElement.textContent = "處理中...";
 
             try {
-                if (auth.currentUser && auth.currentUser.isAnonymous) {
-                    const result = await linkWithPopup(auth.currentUser, provider);
-                    console.log("匿名帳戶已成功連結到 Google 帳戶:", result.user);
-                    feedbackElement.textContent = "✅ 進度已成功儲存到 Google 帳戶！";
-                    linkGoogleBtn.classList.add('hidden'); // 連結成功後隱藏按鈕
-                    // onAuthStateChanged 會自動觸發並更新 userId 和載入數據
-                } else if (auth.currentUser) {
-                    console.log("當前使用者已經登入非匿名帳戶:", auth.currentUser.providerData[0].providerId);
-                    feedbackElement.textContent = "你已經登入其他帳戶或已儲存進度。";
-                    linkGoogleBtn.classList.add('hidden'); // 非匿名使用者直接隱藏按鈕
-                } else {
-                    console.log("沒有登入的使用者。");
-                    feedbackElement.textContent = "沒有登入的使用者可供連結。";
+                if (!currentUser) { // 沒有使用者登入，嘗試 Google 登入
+                    await signInWithPopup(auth, googleProvider);
+                    feedbackElement.textContent = "✅ Google 登入成功！";
+                } else if (currentUser.isAnonymous) { // 匿名使用者，連結到 Google
+                    await linkWithPopup(currentUser, googleProvider);
+                    feedbackElement.textContent = "✅ 匿名帳戶已連結到 Google 帳戶！";
+                } else { // 已登入永久帳戶，提供登出
+                    await signOut(auth);
+                    feedbackElement.textContent = "✅ 已登出。";
+                    // 登出後，onAuthStateChanged 會觸發 null user，並更新 UI
                 }
             } catch (error) {
-                console.error("連結 Google 帳戶失敗:", error);
-                feedbackElement.textContent = `⚠️ 連結帳戶失敗: ${error.message}`;
-                // 處理錯誤，例如帳戶已存在等情況
+                console.error("認證操作失敗:", error);
+                feedbackElement.textContent = `⚠️ 操作失敗: ${error.message}`;
                 if (error.code === 'auth/credential-already-in-use') {
-                    feedbackElement.textContent = "這個 Google 帳戶已被其他 Firebase 帳戶使用。";
+                    feedbackElement.textContent = "此 Google 帳戶已被其他 Firebase 帳戶使用。";
                 } else if (error.code === 'auth/popup-closed-by-user') {
-                    feedbackElement.textContent = "Google 登入視窗已關閉。";
+                    feedbackElement.textContent = "登入/連結視窗已關閉。";
                 }
             } finally {
+                authButton.disabled = false; // 恢復按鈕可點擊狀態
                 setTimeout(() => feedbackElement.textContent = '', 5000); // 5 秒後清除訊息
-                linkGoogleBtn.disabled = false; // 恢復按鈕可點擊狀態
             }
         }
 
+        /**
+         * 根據使用者狀態渲染右上角的認證 UI。
+         * @param {firebase.User | null} user
+         */
+        function renderAuthUI(user) {
+            const authContainer = document.getElementById('auth-ui-container');
+            if (!authContainer) return; 
+
+            authContainer.innerHTML = ''; // 清除現有內容
+
+            if (!user) { // 沒有使用者登入
+                authContainer.innerHTML = `
+                    <button id="auth-button" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
+                        登入
+                    </button>
+                `;
+            } else if (user.isAnonymous) { // 匿名使用者
+                authContainer.innerHTML = `
+                    <button id="auth-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
+                        連結 Google 帳戶
+                    </button>
+                `;
+            } else { // 已登入永久帳戶 (例如 Google)
+                const displayName = user.displayName || user.email || '使用者';
+                authContainer.innerHTML = `
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm font-medium text-gray-300 hidden sm:block">哈囉, ${displayName}</span>
+                        <button id="auth-button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
+                            登出
+                        </button>
+                    </div>
+                `;
+            }
+            // 每次重新渲染後，都需要重新綁定事件監聽器
+            document.getElementById('auth-button')?.addEventListener('click', handleAuthAction);
+        }
 
         /**
          * 主要初始化函數。
@@ -462,28 +494,20 @@
 
                 // 2. 認證狀態監聽器 (在載入資料前獲取 userId 至關重要)
                 onAuthStateChanged(auth, (user) => {
-                    const linkGoogleBtn = document.getElementById('link-google-btn');
                     if (user) {
                         userId = user.uid;
                         isAuthReady = true;
                         document.getElementById('app-status').textContent = "應用程式狀態: 連線成功";
                         document.getElementById('user-id-display').textContent = `使用者 ID: ${userId}`;
                         loadHabits(); // 認證後開始監聽資料變化
-                        
-                        // 檢查是否為匿名使用者，如果是則顯示連結按鈕
-                        if (user.isAnonymous) {
-                            linkGoogleBtn.classList.remove('hidden');
-                        } else {
-                            linkGoogleBtn.classList.add('hidden'); // 非匿名使用者隱藏按鈕
-                        }
-
                     } else {
-                        if (userId === null) { // 如果使用者登出但還沒有重新登入
+                        if (userId === null) { 
                             document.getElementById('app-status').textContent = "應用程式狀態: 登入中...";
                             authenticate(); // 嘗試重新認證（通常是匿名登入）
                         }
-                        linkGoogleBtn.classList.add('hidden'); // 沒有使用者時隱藏按鈕
+                        // 如果沒有使用者，也渲染 UI
                     }
+                    renderAuthUI(user); // 每次認證狀態改變時更新右上角 UI
                 });
                 
                 // 首次呼叫認證流程
@@ -508,18 +532,18 @@
             document.getElementById('prev-btn').addEventListener('click', handlePrevious);
             
             renderStep(currentStep); 
-
-            // --- 新增：綁定連結 Google 帳戶按鈕事件 ---
-            document.getElementById('link-google-btn').addEventListener('click', linkGoogleAccount);
         };
 
     </script>
 </head>
 <body class="min-h-screen p-4 sm:p-6 pb-20">
     <div class="max-w-xl mx-auto">
-        <header class="text-center mb-6 pt-4">
-            <h1 class="text-3xl font-extrabold text-white mb-1">原子習慣追蹤器</h1>
-            <p class="text-indigo-400 text-sm">讓好習慣變得顯而易見、有吸引力、輕而易舉、令人滿意。</p>
+        <header class="mb-6 pt-4 relative"> <!-- 新增 relative 讓絕對定位的按鈕能對齊 -->
+            <div id="auth-ui-container" class="absolute top-4 right-0">
+                <!-- 帳號登入/連結/登出按鈕將由 JavaScript 渲染 -->
+            </div>
+            <h1 class="text-3xl font-extrabold text-white mb-1 text-center">原子習慣追蹤器</h1>
+            <p class="text-indigo-400 text-sm text-center">讓好習慣變得顯而易見、有吸引力、輕而易舉、令人滿意。</p>
         </header>
 
         <!-- 建立新習慣區域 -->
@@ -577,11 +601,6 @@
             <p id="feedback" class="text-center h-5 text-sm font-medium text-yellow-400 mb-1"></p>
             <p id="app-status" class="text-xs text-gray-500 text-center">應用程式狀態: 載入中...</p>
             <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
-            
-            <!-- 新增：連結 Google 帳戶按鈕 -->
-            <button id="link-google-btn" class="hidden w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 mt-2 rounded-xl transition duration-300 shadow-md">
-                連結 Google 帳戶，保存進度
-            </button>
         </div>
     </div>
 </body>
