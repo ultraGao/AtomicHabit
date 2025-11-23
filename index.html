@@ -33,12 +33,80 @@
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/4f46e5/ffffff?text=AH">
     <!-- Manifest Link (由 JS 注入) -->
     <link rel="manifest" id="manifest-link">
+</head>
+<body class="min-h-screen p-4 sm:p-6 pb-20">
+    <div class="max-w-xl mx-auto">
+        <header class="mb-6 pt-4 relative"> 
+            <div id="auth-ui-container" class="absolute top-4 right-0 z-10">
+                <!-- 帳號登入/連結/登出按鈕將由 JavaScript 渲染 -->
+            </div>
+            <h1 class="text-3xl font-extrabold text-white mb-1 text-center">原子習慣追蹤器</h1>
+            <p class="text-indigo-400 text-sm text-center">讓好習慣變得顯而易見、有吸引力、輕而易舉、令人滿意。</p>
+        </header>
+
+        <!-- 建立新習慣區域 -->
+        <div class="mb-6">
+            <button id="toggle-form-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition duration-300 shadow-lg">
+                ➕ 建立新習慣
+            </button>
+
+            <!-- 新習慣表單 (使用過渡效果) -->
+            <div id="new-habit-form-container" class="mt-4 overflow-hidden transition-all duration-500 ease-in-out max-h-0 opacity-0 invisible">
+                <form id="new-habit-form" class="bg-gray-700 p-4 rounded-xl shadow-inner space-y-4">
+                    
+                    <!-- 進度指示器 -->
+                    <div id="progress-indicator" class="flex justify-center space-x-2 pb-4 pt-1"></div>
+                    
+                    <!-- 動態步驟內容 -->
+                    <div id="step-content">
+                        <!-- 內容將由 JavaScript 注入 -->
+                    </div>
+                    
+                    <!-- 導航與提示 -->
+                    <div class="pt-4 border-t border-gray-600">
+                        <!-- 下一步提示 -->
+                        <p id="feedback-hint" class="text-center text-sm font-medium text-indigo-300 mb-3"></p>
+                        
+                        <div class="flex justify-between">
+                            <button type="button" id="prev-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 disabled:opacity-30">
+                                上一步
+                            </button>
+                            <button type="button" id="next-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-full transition duration-300">
+                                下一步
+                            </button>
+                        </div>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+        <!-- 習慣列表 -->
+        <h2 class="text-2xl font-bold text-white mb-4 border-b border-gray-700 pb-2">我的習慣清單</h2>
+        <div id="habit-list" class="space-y-4">
+            <!-- 習慣卡片將在此處由 JavaScript 渲染 -->
+        </div>
+
+        <!-- 無習慣提示 -->
+        <div id="no-habits" class="text-center p-8 bg-gray-800 rounded-xl shadow-lg mt-6 hidden">
+            <p class="text-gray-400 mb-3">你還沒有建立任何習慣！</p>
+            <p class="text-white font-medium">點擊上方的「➕ 建立新習慣」來開始你的改變吧。</p>
+        </div>
+
+        <!-- 應用程式狀態和回饋 -->
+        <div class="fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm p-3 border-t border-indigo-700">
+            <!-- 全域回饋區域 -->
+            <p id="feedback" class="text-center h-5 text-sm font-medium text-yellow-400 mb-1"></p>
+            <p id="app-status" class="text-xs text-gray-500 text-center">應用程式狀態: 載入中...</p>
+            <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
+        </div>
+    </div>
 
     <!-- Firebase SDKs (v9 或更高版本模組化寫法) -->
+    <!-- ***** 修正：將此 script 區塊移動到 <body> 的最底部 ***** -->
     <script type="module">
         // --- 1. 導入所有推薦的 Firebase 模組 ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; 
-        // 額外導入 GoogleAuthProvider, signInWithPopup, signOut
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, linkWithPopup, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
         import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
         import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js"; 
@@ -56,7 +124,6 @@
         };
 
         // 為你的 Firestore 路徑定義 appId
-        // 修正：現在它會正確取得 firebaseConfig 中的 appId 值
         const appId = firebaseConfig.appId; 
 
         const initialAuthToken = null; 
@@ -72,12 +139,10 @@
         let currentStep = 0;
         let tempFormData = {};
 
-        // 初始化 Google 認證提供者 (只需一次)
         const googleProvider = new GoogleAuthProvider();
 
         setLogLevel('Debug');
 
-        // PWA 設置函數 (這裡未修改)
         const setupPWA = () => {
             const manifest = {
                 "name": "原子習慣追蹤器",
@@ -97,7 +162,6 @@
             document.getElementById('manifest-link').setAttribute('href', manifestURL);
         };
 
-        // 日期格式化 (這裡未修改)
         const formatDate = (date) => {
             const y = date.getFullYear();
             const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -105,7 +169,6 @@
             return `${y}-${m}-${d}`;
         };
 
-        // 計算連續天數 (這裡未修改)
         const calculateStreak = (history) => {
             if (!history || history.length === 0) { return { streak: 0, completedToday: false }; }
             const todayStr = formatDate(new Date());
@@ -124,7 +187,6 @@
             return { streak: currentStreak, completedToday: isCompletedToday };
         };
 
-        // 渲染習慣清單 (這裡未修改)
         const renderHabits = (habits) => {
             const habitList = document.getElementById('habit-list');
             const noHabits = document.getElementById('no-habits');
@@ -201,7 +263,6 @@
             });
         };
 
-        // 載入習慣 (這裡未修改)
         const loadHabits = () => {
             if (!db || !userId) { console.error("Firestore 或使用者 ID 尚未初始化。"); return; }
             const habitsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/habits`);
@@ -215,7 +276,6 @@
             });
         };
 
-        // 新增習慣 (這裡未修改)
         const addHabit = async (name, identity, reward, reminderTime, streakTitle) => {
             if (!db || !userId) return;
             const newHabit = {
@@ -234,7 +294,6 @@
             }
         };
 
-        // 切換習慣完成狀態 (這裡未修改)
         const toggleHabit = async (habitId, currentHistory) => {
             if (!db || !userId) return;
             const todayStr = formatDate(new Date());
@@ -259,7 +318,6 @@
             }
         };
 
-        // 移除習慣 (這裡未修改)
         const removeHabit = async (habitId) => {
              if (!db || !userId) return;
              try {
@@ -273,7 +331,6 @@
             }
         };
 
-        // 渲染步驟 (這裡未修改)
         const renderStep = (stepIndex) => {
             const stepContent = document.getElementById('step-content');
             const prevBtn = document.getElementById('prev-btn');
@@ -313,7 +370,6 @@
             feedbackElement.textContent = step.nextHint;
         };
 
-        // 處理下一步 (這裡未修改)
         const handleNext = () => {
             const currentStepData = STEPS[currentStep];
             const inputElement = document.getElementById(currentStepData.id);
@@ -345,7 +401,6 @@
             }
         };
 
-        // 處理上一步 (這裡未修改)
         const handlePrevious = () => {
             if (currentStep > 0) {
                 currentStep--;
@@ -353,7 +408,6 @@
             }
         };
 
-        // 切換表單可見性 (這裡未修改)
         const toggleNewHabitForm = (force) => {
             const formContainer = document.getElementById('new-habit-form-container');
             const button = document.getElementById('toggle-form-btn');
@@ -380,28 +434,24 @@
             }
         };
         
-        /**
-         * 處理右上角認證按鈕的點擊事件 (登入 / 連結 / 登出)。
-         */
         async function handleAuthAction() {
             const currentUser = auth.currentUser;
             const feedbackElement = document.getElementById('feedback');
             const authButton = document.getElementById('auth-button');
 
-            authButton.disabled = true; // 操作期間禁用按鈕
+            authButton.disabled = true; 
             feedbackElement.textContent = "處理中...";
 
             try {
-                if (!currentUser) { // 沒有使用者登入，嘗試 Google 登入
+                if (!currentUser) { 
                     await signInWithPopup(auth, googleProvider);
                     feedbackElement.textContent = "✅ Google 登入成功！";
-                } else if (currentUser.isAnonymous) { // 匿名使用者，連結到 Google
+                } else if (currentUser.isAnonymous) { 
                     await linkWithPopup(currentUser, googleProvider);
                     feedbackElement.textContent = "✅ 匿名帳戶已連結到 Google 帳戶！";
-                } else { // 已登入永久帳戶，提供登出
+                } else { 
                     await signOut(auth);
                     feedbackElement.textContent = "✅ 已登出。";
-                    // 登出後，onAuthStateChanged 會觸發 null user，並更新 UI
                 }
             } catch (error) {
                 console.error("認證操作失敗:", error);
@@ -412,34 +462,33 @@
                     feedbackElement.textContent = "登入/連結視窗已關閉。";
                 }
             } finally {
-                authButton.disabled = false; // 恢復按鈕可點擊狀態
-                setTimeout(() => feedbackElement.textContent = '', 5000); // 5 秒後清除訊息
+                authButton.disabled = false; 
+                setTimeout(() => feedbackElement.textContent = '', 5000); 
             }
         }
 
-        /**
-         * 根據使用者狀態渲染右上角的認證 UI。
-         * @param {firebase.User | null} user
-         */
         function renderAuthUI(user) {
             const authContainer = document.getElementById('auth-ui-container');
-            if (!authContainer) return; 
+            if (!authContainer) { 
+                console.warn("auth-ui-container not found in DOM.");
+                return;
+            } 
 
-            authContainer.innerHTML = ''; // 清除現有內容
+            authContainer.innerHTML = ''; 
 
-            if (!user) { // 沒有使用者登入
+            if (!user) { 
                 authContainer.innerHTML = `
                     <button id="auth-button" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
                         登入
                     </button>
                 `;
-            } else if (user.isAnonymous) { // 匿名使用者
+            } else if (user.isAnonymous) { 
                 authContainer.innerHTML = `
                     <button id="auth-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
                         連結 Google 帳戶
                     </button>
                 `;
-            } else { // 已登入永久帳戶 (例如 Google)
+            } else { 
                 const displayName = user.displayName || user.email || '使用者';
                 authContainer.innerHTML = `
                     <div class="flex items-center space-x-2">
@@ -450,13 +499,9 @@
                     </div>
                 `;
             }
-            // 每次重新渲染後，都需要重新綁定事件監聽器
             document.getElementById('auth-button')?.addEventListener('click', handleAuthAction);
         }
 
-        /**
-         * 主要初始化函數。
-         */
         const initFirebaseAndApp = () => {
             if (!Object.keys(firebaseConfig).length || !firebaseConfig.apiKey) {
                 console.error("Firebase 配置遺失。無法初始化 Firebase。");
@@ -473,7 +518,6 @@
 
                 document.getElementById('app-status').textContent = "應用程式狀態: 初始化中...";
                 
-                // 1. 認證 (自定義 Token 或匿名)
                 const authenticate = async () => {
                     try {
                         if (initialAuthToken) { 
@@ -492,25 +536,22 @@
                     }
                 };
 
-                // 2. 認證狀態監聽器 (在載入資料前獲取 userId 至關重要)
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         userId = user.uid;
                         isAuthReady = true;
                         document.getElementById('app-status').textContent = "應用程式狀態: 連線成功";
                         document.getElementById('user-id-display').textContent = `使用者 ID: ${userId}`;
-                        loadHabits(); // 認證後開始監聽資料變化
+                        loadHabits(); 
                     } else {
                         if (userId === null) { 
                             document.getElementById('app-status').textContent = "應用程式狀態: 登入中...";
-                            authenticate(); // 嘗試重新認證（通常是匿名登入）
+                            authenticate(); 
                         }
-                        // 如果沒有使用者，也渲染 UI
                     }
-                    renderAuthUI(user); // 每次認證狀態改變時更新右上角 UI
+                    renderAuthUI(user); 
                 });
                 
-                // 首次呼叫認證流程
                 authenticate();
 
             } catch (error) {
@@ -524,7 +565,6 @@
             setupPWA(); 
             initFirebaseAndApp();
             
-            // --- 多步驟表單處理 ---
             document.getElementById('new-habit-form').addEventListener('submit', (e) => e.preventDefault()); 
             document.getElementById('toggle-form-btn').addEventListener('click', () => toggleNewHabitForm());
             
@@ -535,73 +575,5 @@
         };
 
     </script>
-</head>
-<body class="min-h-screen p-4 sm:p-6 pb-20">
-    <div class="max-w-xl mx-auto">
-        <header class="mb-6 pt-4 relative"> <!-- 新增 relative 讓絕對定位的按鈕能對齊 -->
-            <div id="auth-ui-container" class="absolute top-4 right-0">
-                <!-- 帳號登入/連結/登出按鈕將由 JavaScript 渲染 -->
-            </div>
-            <h1 class="text-3xl font-extrabold text-white mb-1 text-center">原子習慣追蹤器</h1>
-            <p class="text-indigo-400 text-sm text-center">讓好習慣變得顯而易見、有吸引力、輕而易舉、令人滿意。</p>
-        </header>
-
-        <!-- 建立新習慣區域 -->
-        <div class="mb-6">
-            <button id="toggle-form-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition duration-300 shadow-lg">
-                ➕ 建立新習慣
-            </button>
-
-            <!-- 新習慣表單 (使用過渡效果) -->
-            <div id="new-habit-form-container" class="mt-4 overflow-hidden transition-all duration-500 ease-in-out max-h-0 opacity-0 invisible">
-                <form id="new-habit-form" class="bg-gray-700 p-4 rounded-xl shadow-inner space-y-4">
-                    
-                    <!-- 進度指示器 -->
-                    <div id="progress-indicator" class="flex justify-center space-x-2 pb-4 pt-1"></div>
-                    
-                    <!-- 動態步驟內容 -->
-                    <div id="step-content">
-                        <!-- 內容將由 JavaScript 注入 -->
-                    </div>
-                    
-                    <!-- 導航與提示 -->
-                    <div class="pt-4 border-t border-gray-600">
-                        <!-- 下一步提示 -->
-                        <p id="feedback-hint" class="text-center text-sm font-medium text-indigo-300 mb-3"></p>
-                        
-                        <div class="flex justify-between">
-                            <button type="button" id="prev-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 disabled:opacity-30">
-                                上一步
-                            </button>
-                            <button type="button" id="next-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-full transition duration-300">
-                                下一步
-                            </button>
-                        </div>
-                    </div>
-
-                </form>
-            </div>
-        </div>
-
-        <!-- 習慣列表 -->
-        <h2 class="text-2xl font-bold text-white mb-4 border-b border-gray-700 pb-2">我的習慣清單</h2>
-        <div id="habit-list" class="space-y-4">
-            <!-- 習慣卡片將在此處由 JavaScript 渲染 -->
-        </div>
-
-        <!-- 無習慣提示 -->
-        <div id="no-habits" class="text-center p-8 bg-gray-800 rounded-xl shadow-lg mt-6 hidden">
-            <p class="text-gray-400 mb-3">你還沒有建立任何習慣！</p>
-            <p class="text-white font-medium">點擊上方的「➕ 建立新習慣」來開始你的改變吧。</p>
-        </div>
-
-        <!-- 應用程式狀態和回饋 -->
-        <div class="fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm p-3 border-t border-indigo-700">
-            <!-- 全域回饋區域 -->
-            <p id="feedback" class="text-center h-5 text-sm font-medium text-yellow-400 mb-1"></p>
-            <p id="app-status" class="text-xs text-gray-500 text-center">應用程式狀態: 載入中...</p>
-            <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
-        </div>
-    </div>
 </body>
 </html>
