@@ -443,13 +443,12 @@
             feedbackElement.textContent = "處理中...";
 
             try {
-                if (!currentUser) { 
+                // 如果沒有登入任何帳戶，或者當前是匿名登入，都執行 Google 登入。
+                // signInWithPopup 在匿名登入的情況下會自動嘗試連結。
+                if (!currentUser || currentUser.isAnonymous) { 
                     await signInWithPopup(auth, googleProvider);
                     feedbackElement.textContent = "✅ Google 登入成功！";
-                } else if (currentUser.isAnonymous) { 
-                    await linkWithPopup(currentUser, googleProvider);
-                    feedbackElement.textContent = "✅ 匿名帳戶已連結到 Google 帳戶！";
-                } else { 
+                } else { // 如果已經是永久帳戶，則執行登出。
                     await signOut(auth);
                     feedbackElement.textContent = "✅ 已登出。";
                 }
@@ -459,7 +458,10 @@
                 if (error.code === 'auth/credential-already-in-use') {
                     feedbackElement.textContent = "此 Google 帳戶已被其他 Firebase 帳戶使用。";
                 } else if (error.code === 'auth/popup-closed-by-user') {
-                    feedbackElement.textContent = "登入/連結視窗已關閉。";
+                    feedbackElement.textContent = "登入視窗已關閉。";
+                } else if (error.code === 'auth/account-exists-with-different-credential') {
+                    // 這是當嘗試連結但該Google帳戶已連結到另一個非匿名帳戶時可能發生
+                    feedbackElement.textContent = "這個 Google 帳戶已經連結到其他帳戶。";
                 }
             } finally {
                 authButton.disabled = false; 
@@ -476,19 +478,13 @@
 
             authContainer.innerHTML = ''; 
 
-            if (!user) { 
+            if (!user || user.isAnonymous) { // 沒有使用者，或為匿名使用者，都顯示「登入」
                 authContainer.innerHTML = `
                     <button id="auth-button" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
                         登入
                     </button>
                 `;
-            } else if (user.isAnonymous) { 
-                authContainer.innerHTML = `
-                    <button id="auth-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
-                        連結 Google 帳戶
-                    </button>
-                `;
-            } else { 
+            } else { // 已登入永久帳戶 (例如 Google)
                 const displayName = user.displayName || user.email || '使用者';
                 authContainer.innerHTML = `
                     <div class="flex items-center space-x-2">
