@@ -3,680 +3,606 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我不當過(動)兒啦~</title>
-    <!-- 載入 Tailwind CSS -->
+    <title>原子RPG：全副武裝</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Press+Start+2P&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #0f172a; /* 設置深色背景 */
+            background-color: #0f172a;
             color: #e2e8f0;
         }
-        /* 自定義捲軸，以提升行動裝置上的視覺體驗 */
-        ::-webkit-scrollbar {
-            width: 8px;
+        .font-pixel { font-family: 'Press Start 2P', cursive; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        
+        /* 動畫特效 */
+        @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        .modal-content { animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .shake { animation: shake 0.5s; }
+        
+        /* 裝備稀有度光芒 */
+        .rarity-common { border-color: #94a3b8; box-shadow: 0 0 5px rgba(148, 163, 184, 0.3); }
+        .rarity-rare { border-color: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.4); }
+        .rarity-epic { border-color: #a855f7; box-shadow: 0 0 12px rgba(168, 85, 247, 0.5); }
+        .rarity-legendary { border-color: #eab308; box-shadow: 0 0 15px rgba(234, 179, 8, 0.6); }
+
+        /* 裝備欄位樣式 */
+        .equip-slot {
+            background-color: #1e293b;
+            border: 2px dashed #475569;
+            transition: all 0.3s;
         }
-        ::-webkit-scrollbar-track {
-            background: #1e293b;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #475569;
-            border-radius: 4px;
+        .equip-slot.filled {
+            border-style: solid;
+            background-color: #1e293b;
         }
     </style>
-    <!-- PWA 相關 META 標籤，讓 iOS 支援全螢幕模式 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="原子習慣">
-    <!-- 為了更好的 PWA 兼容性，建議也加入 mobile-web-app-capable -->
     <meta name="mobile-web-app-capable" content="yes">
-    <!-- 佔位圖標，實際應用中應替換為真實圖片 -->
-    <link rel="apple-touch-icon" href="https://placehold.co/192x192/4f46e5/ffffff?text=AH">
-    <!-- Manifest Link (由 JS 注入) -->
-    <link rel="manifest" id="manifest-link">
 </head>
-<body class="min-h-screen p-4 sm:p-6 pb-20">
-    <div class="max-w-xl mx-auto">
-        <header class="mb-6 pt-4 relative"> 
-            <div id="auth-ui-container" class="absolute top-4 right-0 z-10">
-                <!-- 帳號登入/連結/登出按鈕將由 JavaScript 渲染 -->
+<body class="min-h-screen p-2 sm:p-4 pb-24 relative overflow-x-hidden">
+    
+    <div id="encounter-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="modal-content bg-gray-800 border-2 border-red-500 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl relative text-center">
+            <h3 class="text-red-500 font-bold tracking-widest text-sm uppercase mb-4 animate-pulse">⚠️ WARNING</h3>
+            <div class="relative w-24 h-24 mx-auto bg-gray-900 rounded-full border-4 border-gray-700 flex items-center justify-center mb-4">
+                <img id="encounter-img" src="" class="w-20 h-20 object-contain rendering-pixelated">
             </div>
-            <h1 class="text-3xl font-extrabold text-white mb-1 text-center">原子習慣追蹤器</h1>
-            <p class="text-indigo-400 text-sm text-center">讓好習慣變得顯而易見、有吸引力、輕而易舉、令人滿意。</p>
+            <h2 id="encounter-name" class="text-xl font-extrabold text-white mb-1"></h2>
+            <p id="encounter-desc" class="text-gray-400 text-xs italic mb-4"></p>
+            <div class="bg-gray-900/80 p-3 rounded-lg border border-red-500/30 mb-6">
+                <p class="text-xs text-red-400 uppercase font-bold">挑戰目標</p>
+                <p id="encounter-target" class="text-lg font-bold text-white mt-1"></p>
+            </div>
+            <button id="accept-battle-btn" class="w-full bg-gradient-to-r from-red-600 to-orange-600 text-white font-bold py-3 rounded-xl shadow-lg">
+                👊 接受挑戰
+            </button>
+        </div>
+    </div>
+
+    <div id="loot-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md hidden opacity-0 transition-opacity duration-300">
+        <div class="modal-content bg-gray-800 border-2 border-yellow-500 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-[0_0_50px_rgba(234,179,8,0.2)] text-center relative">
+            <div class="absolute -top-10 left-1/2 transform -translate-x-1/2 text-4xl">🎉</div>
+            <h2 class="text-2xl font-extrabold text-yellow-400 mb-2">戰鬥勝利！</h2>
+            <div id="loot-container" class="hidden mb-6 mt-4">
+                <p class="text-xs text-yellow-200 uppercase font-bold mb-2">獲得裝備</p>
+                <div class="bg-gray-900 p-3 rounded-xl border-2 flex items-center gap-4 text-left" id="loot-card">
+                    <div class="text-3xl" id="loot-icon"></div>
+                    <div>
+                        <p class="font-bold text-white text-sm" id="loot-name"></p>
+                        <p class="text-xs text-gray-400" id="loot-rarity"></p>
+                    </div>
+                </div>
+            </div>
+            <button id="claim-loot-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition">收下獎勵</button>
+        </div>
+    </div>
+
+    <div id="inventory-modal" class="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 hidden">
+        <div class="bg-gray-800 w-full max-w-md h-[80vh] rounded-t-2xl sm:rounded-2xl p-4 flex flex-col border border-gray-700 relative">
+            <div class="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                <h2 class="text-xl font-bold text-white">🎒 背包</h2>
+                <button onclick="document.getElementById('inventory-modal').classList.add('hidden')" class="text-gray-400 text-2xl">&times;</button>
+            </div>
+            <div id="inventory-list" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                </div>
+        </div>
+    </div>
+
+    <div class="max-w-xl mx-auto">
+        <header class="mb-4 pt-4 flex justify-between items-end px-2"> 
+            <div>
+                <h1 class="text-2xl font-extrabold text-white">角色面板</h1>
+                <p class="text-indigo-400 text-xs">裝備你的習慣戰利品</p>
+            </div>
+            <div class="flex gap-2">
+                <button id="open-inventory-btn" class="bg-gray-700 hover:bg-gray-600 text-white p-2 rounded-lg shadow text-xl relative">
+                    🎒 <span id="inventory-count" class="absolute -top-1 -right-1 bg-red-500 text-[10px] w-4 h-4 flex items-center justify-center rounded-full hidden">0</span>
+                </button>
+                <div id="auth-ui-container"></div>
+            </div>
         </header>
 
-        <!-- 建立新習慣區域 -->
-        <div class="mb-6">
-            <button id="toggle-form-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition duration-300 shadow-lg">
-                ➕ 建立新習慣
-            </button>
+        <div class="mb-6 bg-gray-900/50 p-2 rounded-xl shadow-lg border border-gray-700">
+            <div class="grid grid-cols-[1fr_2fr_1fr] gap-1 sm:gap-2 items-center">
+                
+                <div class="flex flex-col gap-2">
+                    <div id="slot-head" class="equip-slot w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group">
+                        <span class="text-xl opacity-30">🧢</span>
+                        <span class="text-[8px] text-gray-500 absolute bottom-0.5">頭部</span>
+                    </div>
+                    <div id="slot-body" class="equip-slot w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group">
+                        <span class="text-xl opacity-30">👕</span>
+                        <span class="text-[8px] text-gray-500 absolute bottom-0.5">軀幹</span>
+                    </div>
+                    <div id="slot-legs" class="equip-slot w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group">
+                        <span class="text-xl opacity-30">👖</span>
+                        <span class="text-[8px] text-gray-500 absolute bottom-0.5">腿部</span>
+                    </div>
+                </div>
 
-            <!-- 新習慣表單 (使用過渡效果) -->
+                <div class="relative h-48 w-full flex items-center justify-center">
+                    <canvas id="attributeRadarChart"></canvas>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <div id="slot-weapon" class="equip-slot w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group">
+                        <span class="text-xl opacity-30">⚔️</span>
+                        <span class="text-[8px] text-gray-500 absolute bottom-0.5">武器</span>
+                    </div>
+                    <div id="slot-necklace" class="equip-slot w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group">
+                        <span class="text-xl opacity-30">📿</span>
+                        <span class="text-[8px] text-gray-500 absolute bottom-0.5">項鍊</span>
+                    </div>
+                    <div id="slot-shoes" class="equip-slot w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group">
+                        <span class="text-xl opacity-30">👟</span>
+                        <span class="text-[8px] text-gray-500 absolute bottom-0.5">鞋子</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-6 px-2">
+            <button id="toggle-form-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition duration-300 shadow-lg flex justify-center items-center gap-2">
+                <span>➕</span> <span>建立修練項目</span>
+            </button>
             <div id="new-habit-form-container" class="mt-4 overflow-hidden transition-all duration-500 ease-in-out max-h-0 opacity-0 invisible">
                 <form id="new-habit-form" class="bg-gray-700 p-4 rounded-xl shadow-inner space-y-4">
-                    
-                    <!-- 進度指示器 -->
-                    <div id="progress-indicator" class="flex justify-center space-x-2 pb-4 pt-1"></div>
-                    
-                    <!-- 動態步驟內容 -->
-                    <div id="step-content">
-                        <!-- 內容將由 JavaScript 注入 -->
+                    <div id="step-content"></div>
+                    <div class="pt-2 flex justify-end">
+                        <button type="button" id="next-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-full">下一步</button>
                     </div>
-                    
-                    <!-- 導航與提示 -->
-                    <div class="pt-4 border-t border-gray-600">
-                        <!-- 下一步提示 -->
-                        <p id="feedback-hint" class="text-center text-sm font-medium text-indigo-300 mb-3"></p>
-                        
-                        <div class="flex justify-between">
-                            <button type="button" id="prev-btn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 disabled:opacity-30">
-                                上一步
-                            </button>
-                            <button type="button" id="next-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-full transition duration-300">
-                                下一步
-                            </button>
-                        </div>
-                    </div>
-
                 </form>
             </div>
         </div>
 
-        <!-- 習慣列表 -->
-        <h2 class="text-2xl font-bold text-white mb-4 border-b border-gray-700 pb-2">我的習慣清單</h2>
-        <div id="habit-list" class="space-y-4">
-            <!-- 習慣卡片將在此處由 JavaScript 渲染 -->
-        </div>
-
-        <!-- 無習慣提示 -->
-        <div id="no-habits" class="text-center p-8 bg-gray-800 rounded-xl shadow-lg mt-6 hidden">
-            <p class="text-gray-400 mb-3">你還沒有建立任何習慣！</p>
-            <p class="text-white font-medium">點擊上方的「➕ 建立新習慣」來開始你的改變吧。</p>
-        </div>
-
-        <!-- 應用程式狀態和回饋 -->
-        <div class="fixed bottom-0 left-0 right-0 bg-gray-900/90 backdrop-blur-sm p-3 border-t border-indigo-700">
-            <!-- 全域回饋區域 -->
-            <p id="feedback" class="text-center h-5 text-sm font-medium text-yellow-400 mb-1"></p>
-            <p id="app-status" class="text-xs text-gray-500 text-center">應用程式狀態: 載入中...</p>
-            <p id="user-id-display" class="text-xs text-gray-500 text-center mt-1 break-all"></p>
-        </div>
+        <h2 class="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2 px-2">當前修練</h2>
+        <div id="habit-list" class="space-y-4 px-2"></div>
+        <div id="no-habits" class="hidden text-center text-gray-500 mt-8">暫無修練，快去建立一個吧！</div>
     </div>
 
-    <!-- Firebase SDKs (v9 或更高版本模組化寫法) -->
-    <!-- 此 script 區塊已移動到 <body> 的最底部，確保 DOM 元素已載入 -->
-    <script type="module">
-        // --- 1. 導入所有推薦的 Firebase 模組 ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; 
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, GoogleAuthProvider, linkWithPopup, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, collection, query, where, arrayUnion, arrayRemove, getDocs, setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js"; 
-        import { getMessaging } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js"; 
+    <div class="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-sm p-2 border-t border-indigo-900/50 z-50 text-center">
+        <p id="feedback" class="h-5 text-sm font-bold text-yellow-400 mb-1"></p>
+        <p id="app-status" class="text-[10px] text-gray-600">System Online</p>
+    </div>
 
-        // --- 2. 你的 Firebase 設定資訊 (直接使用，確保不會被空物件覆蓋) ---
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"; 
+        import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, addDoc, updateDoc, deleteDoc, onSnapshot, collection, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        // Firebase Configuration
         const firebaseConfig = {
-            apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqZr3Eof916U", // 請確認這是你自己的！
+            apiKey: "AIzaSyAa2PYFB90eMMXF4jlZRgvpqZr3Eof916U",
             authDomain: "habitkeeper-87e88.firebaseapp.com",
             projectId: "habitkeeper-87e88",
             storageBucket: "habitkeeper-87e88.firebasestorage.app",
             messagingSenderId: "773693972402",
-            appId: "1:773693972402:web:23ae51483f3e1a4926ceab",
-            measurementId: "G-5X5WNFN4X6"
+            appId: "1:773693972402:web:23ae51483f3e1a4926ceab"
         };
 
-        // 為你的 Firestore 路徑定義 appId
         const appId = firebaseConfig.appId; 
+        let app, db, auth, userId;
+        let radarChartInstance = null;
+        let activeBattles = {}; 
+        let userInventory = [];
+        let equippedItems = { head: null, body: null, legs: null, weapon: null, necklace: null, shoes: null };
 
-        const initialAuthToken = null; 
+        // --- Game Data: Monster & Loot ---
+        // 更新後的 Loot Table，包含具體的 slot (部位)
+        const LOOT_TABLE = [
+            { name: "木劍", icon: "🗡️", slot: "weapon", rarity: 1 },
+            { name: "新手頭帶", icon: "🤕", slot: "head", rarity: 1 },
+            { name: "布衣", icon: "👕", slot: "body", rarity: 1 },
+            { name: "草鞋", icon: "👡", slot: "shoes", rarity: 1 },
+            
+            { name: "生鏽鐵劍", icon: "🗡️", slot: "weapon", rarity: 2 },
+            { name: "皮帽", icon: "🧢", slot: "head", rarity: 2 },
+            { name: "皮甲", icon: "🦺", slot: "body", rarity: 2 },
+            { name: "獵人長褲", icon: "👖", slot: "legs", rarity: 2 },
+            { name: "皮靴", icon: "👢", slot: "shoes", rarity: 2 },
+            { name: "幸運符", icon: "🧿", slot: "necklace", rarity: 2 },
 
-        // --- 3. 全域 Firebase 實例與狀態 ---
-        let app = null;
-        let db = null;
-        let auth = null;
-        let analytics = null; 
-        let messaging = null; 
-        let userId = null;
-        let isAuthReady = false;
-        let currentStep = 0;
-        let tempFormData = {};
+            { name: "勇者之劍", icon: "⚔️", slot: "weapon", rarity: 3 },
+            { name: "騎士頭盔", icon: "⛑️", slot: "head", rarity: 3 },
+            { name: "板甲", icon: "🛡️", slot: "body", rarity: 3 },
+            { name: "重甲護腿", icon: "🦵", slot: "legs", rarity: 3 },
+            { name: "紅寶石項鍊", icon: "📿", slot: "necklace", rarity: 3 },
 
-        const googleProvider = new GoogleAuthProvider();
+            { name: "Excalibur", icon: "✨", slot: "weapon", rarity: 4 },
+            { name: "龍鱗鎧甲", icon: "🐉", slot: "body", rarity: 4 }
+        ];
 
-        setLogLevel('Debug');
+        const MONSTERS = [
+            { id: 'm1', minStreak: 0, chance: 40, name: "果凍史萊姆", seed: "slime", desc: "軟Q對手", multiplier: 1.0 },
+            { id: 'm2', minStreak: 0, chance: 30, name: "干擾蝙蝠", seed: "bat", desc: "分心攻擊", multiplier: 1.0 },
+            { id: 'm3', minStreak: 3, chance: 40, name: "哥布林", seed: "goblin", desc: "充滿誘惑", multiplier: 1.1 },
+            { id: 'm4', minStreak: 7, chance: 30, name: "骷髏兵", seed: "skeleton", desc: "堅持就是勝利", multiplier: 1.2 },
+            { id: 'm5', minStreak: 14, chance: 20, name: "重甲守衛", seed: "guard", desc: "強敵出現", multiplier: 1.5 },
+            { id: 'm6', minStreak: 21, chance: 10, name: "心魔巨龍", seed: "dragon", desc: "極限挑戰", multiplier: 2.0 }
+        ];
 
-        // PWA 設置函數
-        const setupPWA = () => {
-            const manifest = {
-                "name": "原子習慣追蹤器",
-                "short_name": "原子習慣",
-                "description": "讓好習慣顯而易見、輕而易舉、有吸引力、令人滿意。",
-                "start_url": ".",
-                "display": "standalone",
-                "background_color": "#0f172a",
-                "theme_color": "#4f46e5",
-                "icons": [
-                    { "src": "https://placehold.co/192x192/4f46e5/ffffff?text=AH", "sizes": "192x192", "type": "image/png" },
-                    { "src": "https://placehold.co/512x512/4f46e5/ffffff?text=AH", "sizes": "512x512", "type": "image/png" }
-                ]
-            };
-            const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-            const manifestURL = URL.createObjectURL(manifestBlob);
-            document.getElementById('manifest-link').setAttribute('href', manifestURL);
+        const ATTRIBUTES = {
+            'STR': { label: '力量', color: '#ef4444' }, 'AGI': { label: '敏捷', color: '#3b82f6' },
+            'SPI': { label: '精神', color: '#a855f7' }, 'INT': { label: '智力', color: '#10b981' },
+            'LUK': { label: '運氣', color: '#eab308' }
         };
 
-        // 日期格式化
-        const formatDate = (date) => {
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const d = String(date.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
-        };
+        const rarityColors = ["", "text-gray-400", "text-blue-400", "text-purple-400", "text-yellow-400"];
+        const rarityBorders = ["", "rarity-common", "rarity-rare", "rarity-epic", "rarity-legendary"];
 
-        // 計算連續天數
+        // --- Core Functions ---
+
+        const formatDate = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        
         const calculateStreak = (history) => {
-            if (!history || history.length === 0) { return { streak: 0, completedToday: false }; }
+            if (!history || history.length === 0) return { streak: 0, completedToday: false };
             const todayStr = formatDate(new Date());
             const isCompletedToday = history.includes(todayStr);
             let currentStreak = 0;
             let d = new Date();
-            if (isCompletedToday) {
-                currentStreak = 1;
-                d.setDate(d.getDate() - 1);
-            } else { return { streak: 0, completedToday: isCompletedToday }; }
+            if (isCompletedToday) { currentStreak = 1; d.setDate(d.getDate() - 1); }
+            else { return { streak: 0, completedToday: false }; }
             for (let i = 0; i < 365; i++) {
-                const dateToCheck = formatDate(d);
-                if (history.includes(dateToCheck)) { currentStreak++; } else { break; }
-                d.setDate(d.getDate() - 1);
+                if (history.includes(formatDate(d))) { currentStreak++; d.setDate(d.getDate() - 1); } else break;
             }
-            return { streak: currentStreak, completedToday: isCompletedToday };
+            return { streak: currentStreak, completedToday: true };
         };
 
-        // 渲染習慣清單
+        // --- Battle & Loot Logic ---
+
+        const triggerEncounter = (habitId, habitData) => {
+            const { streak } = calculateStreak(habitData.history);
+            const eligible = MONSTERS.filter(m => streak >= m.minStreak);
+            const monster = eligible[Math.floor(Math.random() * eligible.length)] || MONSTERS[0];
+            
+            const modal = document.getElementById('encounter-modal');
+            document.getElementById('encounter-img').src = `https://api.dicebear.com/9.x/pixel-art/svg?seed=${monster.seed}`;
+            document.getElementById('encounter-name').textContent = monster.name;
+            document.getElementById('encounter-desc').textContent = monster.desc;
+            
+            let targetText = habitData.minimumAction;
+            if (monster.multiplier > 1) {
+                targetText += ` (強度 x${Math.floor(monster.multiplier * 100)}%)`;
+                document.getElementById('encounter-target').classList.add('text-yellow-400');
+            } else {
+                document.getElementById('encounter-target').classList.remove('text-yellow-400');
+            }
+            document.getElementById('encounter-target').textContent = targetText;
+
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+
+            document.getElementById('accept-battle-btn').onclick = () => {
+                activeBattles[habitId] = monster;
+                renderHabits(window.cachedHabits); // Update UI state
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            };
+        };
+
+        const resolveBattle = async (habitId, success) => {
+            if (!success) {
+                if(confirm("放棄修練？")) { delete activeBattles[habitId]; renderHabits(window.cachedHabits); }
+                return;
+            }
+
+            const monster = activeBattles[habitId];
+            const habitData = window.cachedHabits.find(h => h.id === habitId);
+            const todayStr = formatDate(new Date());
+
+            // 1. Update History
+            if (!habitData.history.includes(todayStr)) {
+                const newHistory = [...habitData.history, todayStr].sort();
+                await updateDoc(doc(db, `artifacts/${appId}/users/${userId}/habits`, habitId), { history: newHistory });
+            }
+
+            // 2. Loot Calculation
+            let lootItem = null;
+            const dropChance = 0.4 + (monster.multiplier - 1) * 0.4; // 稍微調高機率
+            if (Math.random() < dropChance) {
+                const roll = Math.random() * monster.multiplier; 
+                let rarityTier = 1;
+                if (roll > 1.8) rarityTier = 4;
+                else if (roll > 1.4) rarityTier = 3;
+                else if (roll > 1.1) rarityTier = 2;
+
+                const possibleLoot = LOOT_TABLE.filter(i => i.rarity === rarityTier || i.rarity === rarityTier - 1);
+                if (possibleLoot.length > 0) lootItem = possibleLoot[Math.floor(Math.random() * possibleLoot.length)];
+            }
+
+            if (lootItem) {
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/inventory`), { ...lootItem, obtainedAt: new Date() });
+            }
+
+            // Show Result
+            const modal = document.getElementById('loot-modal');
+            const lootContainer = document.getElementById('loot-container');
+            if (lootItem) {
+                lootContainer.classList.remove('hidden');
+                document.getElementById('loot-icon').textContent = lootItem.icon;
+                document.getElementById('loot-name').textContent = lootItem.name;
+                document.getElementById('loot-rarity').textContent = ["","普通","稀有","史詩","傳說"][lootItem.rarity];
+                document.getElementById('loot-card').className = `bg-gray-900 p-3 rounded-xl border-2 flex items-center gap-4 text-left ${rarityBorders[lootItem.rarity]}`;
+            } else {
+                lootContainer.classList.add('hidden');
+            }
+            modal.classList.remove('hidden');
+            setTimeout(() => modal.classList.remove('opacity-0'), 10);
+            
+            document.getElementById('claim-loot-btn').onclick = () => {
+                modal.classList.add('opacity-0');
+                setTimeout(() => modal.classList.add('hidden'), 300);
+            };
+
+            delete activeBattles[habitId];
+        };
+
+        // --- Equipment System ---
+
+        const loadEquipment = () => {
+            onSnapshot(doc(db, `artifacts/${appId}/users/${userId}/playerData`, 'equipment'), (docSnap) => {
+                if (docSnap.exists()) {
+                    equippedItems = docSnap.data();
+                }
+                renderEquipmentSlots();
+            });
+        };
+
+        const renderEquipmentSlots = () => {
+            const slots = ['head', 'body', 'legs', 'weapon', 'necklace', 'shoes'];
+            const labels = { head: '頭部', body: '軀幹', legs: '腿部', weapon: '武器', necklace: '項鍊', shoes: '鞋子' };
+            const defaultIcons = { head: '🧢', body: '👕', legs: '👖', weapon: '⚔️', necklace: '📿', shoes: '👟' };
+
+            slots.forEach(slotKey => {
+                const el = document.getElementById(`slot-${slotKey}`);
+                const item = equippedItems[slotKey];
+                
+                if (item) {
+                    el.className = `equip-slot filled w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group ${rarityBorders[item.rarity]}`;
+                    el.innerHTML = `
+                        <span class="text-2xl drop-shadow-md">${item.icon}</span>
+                        <div class="absolute inset-0 bg-black/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition rounded-lg text-xs text-white font-bold p-1 text-center">
+                            ${item.name}
+                        </div>
+                    `;
+                    el.onclick = () => { if(confirm(`卸下 ${item.name}?`)) equipItem(slotKey, null); };
+                } else {
+                    el.className = `equip-slot w-full aspect-square rounded-lg flex flex-col items-center justify-center cursor-pointer relative group opacity-50 hover:opacity-100`;
+                    el.innerHTML = `
+                        <span class="text-xl opacity-30">${defaultIcons[slotKey]}</span>
+                        <span class="text-[8px] text-gray-500 absolute bottom-0.5">${labels[slotKey]}</span>
+                    `;
+                    el.onclick = () => { 
+                        document.getElementById('inventory-modal').classList.remove('hidden'); 
+                        // 這裡可以做過濾，只顯示該部位裝備，暫時顯示全部
+                    };
+                }
+            });
+        };
+
+        const equipItem = async (slot, itemData) => {
+            const newEquipment = { ...equippedItems };
+            if (itemData) {
+                newEquipment[slot] = itemData;
+                document.getElementById('feedback').textContent = `已裝備: ${itemData.name}`;
+            } else {
+                delete newEquipment[slot];
+            }
+            
+            await setDoc(doc(db, `artifacts/${appId}/users/${userId}/playerData`, 'equipment'), newEquipment);
+            setTimeout(() => document.getElementById('feedback').textContent = '', 2000);
+        };
+
+        // --- Inventory & UI ---
+
+        const loadInventory = () => {
+            onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/inventory`), (snap) => {
+                userInventory = [];
+                snap.forEach(d => userInventory.push({ id: d.id, ...d.data() }));
+                
+                const countSpan = document.getElementById('inventory-count');
+                countSpan.textContent = userInventory.length;
+                countSpan.classList.toggle('hidden', userInventory.length === 0);
+
+                const list = document.getElementById('inventory-list');
+                list.innerHTML = userInventory.map(item => {
+                    const slotName = { head: '頭部', body: '軀幹', legs: '腿部', weapon: '武器', necklace: '項鍊', shoes: '鞋子' }[item.slot] || '未知';
+                    const isEquipped = Object.values(equippedItems).some(e => e && e.name === item.name); // 簡單比對，實際應比對ID
+                    
+                    return `
+                        <div class="bg-gray-700/50 p-3 rounded-lg flex items-center justify-between border border-gray-600 mb-2">
+                            <div class="flex items-center gap-3">
+                                <div class="text-2xl">${item.icon}</div>
+                                <div>
+                                    <p class="text-white font-bold text-sm">${item.name}</p>
+                                    <p class="text-[10px] ${rarityColors[item.rarity]}">${slotName} • ${["","普通","稀有","史詩","傳說"][item.rarity]}</p>
+                                </div>
+                            </div>
+                            <button onclick="window.dispatchEvent(new CustomEvent('equip-request', {detail: '${item.id}'}))" 
+                                class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-full transition">
+                                裝備
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            });
+        };
+
+        window.addEventListener('equip-request', (e) => {
+            const item = userInventory.find(i => i.id === e.detail);
+            if (item && item.slot) {
+                equipItem(item.slot, item);
+                document.getElementById('inventory-modal').classList.add('hidden');
+            } else {
+                alert('此物品無法裝備！');
+            }
+        });
+
+        // --- Standard Habit Functions (Render, Add, etc.) ---
+
         const renderHabits = (habits) => {
+            window.cachedHabits = habits;
             const habitList = document.getElementById('habit-list');
             const noHabits = document.getElementById('no-habits');
             habitList.innerHTML = ''; 
-
-            if (!habits || habits.length === 0) { noHabits.classList.remove('hidden'); return; }
-            noHabits.classList.add('hidden');
+            noHabits.classList.toggle('hidden', habits.length > 0);
 
             habits.forEach(habit => {
                 const { streak, completedToday } = calculateStreak(habit.history);
-                const buttonColor = completedToday ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700';
-                const buttonText = completedToday ? '今日已完成 ✅' : '標記完成';
-                const streakColor = streak > 0 ? 'text-green-400' : 'text-gray-400';
-                const hasAchievedTitle = streak >= 21;
-                const streakTitleText = habit.streakTitle || '未設定稱號';
+                const inBattle = activeBattles[habit.id];
+                const attrColor = ATTRIBUTES[habit.attribute || 'LUK'].color;
+                
+                let actionHtml = '';
+                let borderClass = `border-l-4`;
+                let borderColor = attrColor;
 
-                const achievementStatus = hasAchievedTitle 
-                    ? `<span class="bg-yellow-500 text-gray-900 px-2 py-0.5 rounded-full text-xs font-semibold">🎉 已達成！ ${streakTitleText}</span>`
-                    : `<span class="text-gray-400 text-sm">目標稱號：${streakTitleText}</span>`;
+                if (completedToday) {
+                    actionHtml = `<button disabled class="w-full bg-green-900/30 text-green-400 font-bold py-2 rounded-lg text-sm cursor-not-allowed">✅ 完成</button>`;
+                    borderColor = '#10b981';
+                } else if (inBattle) {
+                    borderColor = '#ef4444';
+                    actionHtml = `
+                        <div class="bg-gray-900/80 p-2 rounded border border-red-500/50 mb-2 flex items-center gap-2">
+                             <img src="https://api.dicebear.com/9.x/pixel-art/svg?seed=${inBattle.seed}" class="w-8 h-8 shake">
+                             <div class="flex-1">
+                                <p class="text-red-400 text-xs font-bold">vs ${inBattle.name}</p>
+                                <p class="text-[10px] text-gray-400">強度: ${Math.floor(inBattle.multiplier*100)}%</p>
+                             </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="window.dispatchEvent(new CustomEvent('resolve-battle', {detail: {id: '${habit.id}', win: false}}))" class="flex-1 bg-gray-700 text-xs py-2 rounded">撤退</button>
+                            <button onclick="window.dispatchEvent(new CustomEvent('resolve-battle', {detail: {id: '${habit.id}', win: true}}))" class="flex-1 bg-green-600 text-white text-xs py-2 rounded font-bold shadow-lg animate-pulse">勝利!</button>
+                        </div>
+                    `;
+                } else {
+                    actionHtml = `<button onclick="window.dispatchEvent(new CustomEvent('trigger-encounter', {detail: '${habit.id}'}))" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-lg text-sm shadow">修練</button>`;
+                }
 
                 const card = `
-                    <div class="bg-gray-800 p-4 sm:p-6 rounded-xl shadow-lg flex flex-col space-y-3 transition duration-300 ease-in-out hover:shadow-2xl">
-                        <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start">
-                            <!-- 習慣目標 (Goal) -->
-                            <div class="mb-2 sm:mb-0">
-                                <p class="text-sm font-light text-indigo-400">習慣目標:</p>
-                                <p class="text-xl font-semibold">${habit.goal || '未設定目標'}</p>
-                            </div>
-                            <!-- 連續天數 (Streak) -->
-                            <div class="flex items-center space-x-2">
-                                <span class="text-xs font-medium text-gray-400">連續:</span>
-                                <span class="text-3xl font-extrabold ${streakColor}">${streak}</span>
-                                <span class="text-xl font-extrabold ${streakColor}">天</span>
+                    <div class="bg-gray-800 p-4 rounded-xl shadow-lg mb-4 relative overflow-hidden ${borderClass}" style="border-color:${borderColor}">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="text-lg font-bold text-white">${habit.goal}</h3>
+                            <div class="text-right">
+                                <span class="text-xl font-bold ${streak>0?'text-green-400':'text-gray-500'}">${streak}</span>
+                                <span class="text-[10px] text-gray-500 block">DAYS</span>
                             </div>
                         </div>
-
-                        <!-- 最小啟動行為 (Minimum Action) -->
-                        <p class="text-lg text-gray-200 border-l-4 pl-3 border-indigo-500/50">
-                            ${habit.minimumAction || '未設定最小行為'}
-                        </p>
-                        
-                        <!-- 其他詳細資訊顯示 -->
-                        <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-400 pt-1 border-t border-gray-700/50">
-                            <!-- 身份目標 -->
-                            ${habit.identity ? `<div class="flex items-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-purple-400 min-w-4"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>身份: ${habit.identity}</span></div>` : ''}
-                            <!-- 觸發門檻 -->
-                            ${habit.threshold ? `<div class="flex items-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-orange-400 min-w-4"><path d="M5 22V8H2L12 2L22 8H19V22H5Z"/></svg><span>門檻: ${habit.threshold}</span></div>` : ''}
-                            <!-- 提醒時間 -->
-                            ${habit.reminderTime ? `<div class="flex items-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-400 min-w-4"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>提醒: ${habit.reminderTime}</span></div>` : ''}
-                            <!-- 立即獎賞 -->
-                            ${habit.reward ? `<div class="flex items-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-400 min-w-4"><path d="M12 2a3 3 0 0 0-3 3v7c0 1.66 1.34 3 3 3s3-1.34 3-3V5a3 3 0 0 0-3-3z"/><path d="M16 12h2l-2 5h-4l-2-5h2"/><path d="M12 18v4"/><path d="M9 21h6"/></svg><span>獎賞: ${habit.reward}</span></div>` : ''}
-                        </div>
-                        
-                        <!-- 21天稱號目標顯示 -->
-                        <div class="pt-2 border-t border-gray-700/50 flex items-center justify-between">
-                            <div class="flex items-center space-x-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-500 min-w-4"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
-                                ${achievementStatus}
-                            </div>
-                        </div>
-
-                        <div class="pt-2 flex justify-between items-center">
-                            <button data-id="${habit.id}" data-history='${JSON.stringify(habit.history)}'
-                                class="toggle-habit-btn ${buttonColor} text-white font-bold py-2 px-4 rounded-full transition duration-150 ease-in-out shadow-md disabled:opacity-50"
-                                ${completedToday ? 'disabled' : ''}>${buttonText}</button>
-                            <button data-id="${habit.id}" class="remove-habit-btn text-red-400 hover:text-red-500 text-sm p-2 rounded-full transition duration-150 ease-in-out">移除</button>
-                        </div>
+                        <p class="text-gray-400 text-xs mb-3 pl-2 border-l-2 border-gray-600">${habit.minimumAction}</p>
+                        ${actionHtml}
+                        ${(!inBattle && !completedToday) ? `<button onclick="window.dispatchEvent(new CustomEvent('remove-habit', {detail: '${habit.id}'}))" class="absolute top-2 right-2 text-gray-600 hover:text-red-400 text-xs">✕</button>` : ''}
                     </div>
                 `;
                 habitList.insertAdjacentHTML('beforeend', card);
             });
-            document.querySelectorAll('.toggle-habit-btn').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const id = e.currentTarget.getAttribute('data-id');
-                    const history = JSON.parse(e.currentTarget.getAttribute('data-history'));
-                    toggleHabit(id, history);
-                });
-            });
-            document.querySelectorAll('.remove-habit-btn').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    const id = e.currentTarget.getAttribute('data-id');
-                    if (!window.confirm("確定要移除這個習慣嗎？所有進度將會遺失。")) { return; }
-                    removeHabit(id);
-                });
-            });
+            updateRadarChart(habits);
         };
 
-        const loadHabits = () => {
-            if (!db || !userId) { console.error("Firestore 或使用者 ID 尚未初始化。"); return; }
-            const habitsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/habits`);
-            onSnapshot(habitsCollectionRef, (snapshot) => {
-                const habits = [];
-                snapshot.forEach(doc => { habits.push({ id: doc.id, ...doc.data(), history: doc.data().history || [] }); });
-                renderHabits(habits);
-            }, (error) => {
-                console.error("監聽習慣集合時發生錯誤:", error);
-                document.getElementById('feedback').textContent = "載入習慣資料時發生錯誤。";
-            });
-        };
+        window.addEventListener('trigger-encounter', e => triggerEncounter(e.detail, window.cachedHabits.find(h=>h.id===e.detail)));
+        window.addEventListener('resolve-battle', e => resolveBattle(e.detail.id, e.detail.win));
+        window.addEventListener('remove-habit', async e => { if(confirm("移除?")) await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/habits`, e.detail)); });
 
-        const addHabit = async (goal, identity, threshold, minimumAction, reminderTime, reward, streakTitle) => {
-            if (!db || !userId) return;
+        // Chart Update
+        const updateRadarChart = (habits) => {
+            const ctx = document.getElementById('attributeRadarChart').getContext('2d');
+            const stats = { 'STR': 1, 'AGI': 1, 'SPI': 1, 'INT': 1, 'LUK': 1 };
+            habits.forEach(h => { if(stats[h.attribute]) stats[h.attribute] += (h.history?.length || 0); });
+            // 這裡未來可以加入裝備加成邏輯 (Bonus Stats)
+            
+            const data = Object.values(stats);
+            const maxVal = Math.max(...data, 10);
 
-            const newHabit = {
-                goal: goal || '未設定目標',
-                identity: identity || '未設定身份目標',
-                threshold: threshold || '未設定門檻',
-                minimumAction: minimumAction || '未設定最小行為', 
-                reminderTime: reminderTime || '未設定',
-                reward: reward || '無', 
-                streakTitle: streakTitle || '習慣新人',
-                history: [], 
-                createdAt: new Date(),
-            };
-
-            try {
-                const habitsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/habits`);
-                await addDoc(habitsCollectionRef, newHabit);
-                document.getElementById('feedback').textContent = "✅ 習慣已成功建立！";
-                setTimeout(() => document.getElementById('feedback').textContent = '', 3000);
-            } catch (e) {
-                console.error("新增文件時發生錯誤: ", e);
-                document.getElementById('feedback').textContent = "⚠️ 新增習慣失敗。";
-            }
-        };
-
-        const toggleHabit = async (habitId, currentHistory) => {
-            if (!db || !userId) return;
-            const todayStr = formatDate(new Date());
-            const habitDocRef = doc(db, `artifacts/${appId}/users/${userId}/habits`, habitId);
-            const isCompleted = currentHistory.includes(todayStr);
-            let newHistory;
-            let feedbackMsg;
-            if (!isCompleted) {
-                newHistory = [...currentHistory, todayStr];
-                feedbackMsg = "🎉 恭喜！今天已完成！";
+            if (radarChartInstance) {
+                radarChartInstance.data.datasets[0].data = data;
+                radarChartInstance.options.scales.r.max = maxVal + 5;
+                radarChartInstance.update();
             } else {
-                newHistory = currentHistory.filter(date => date !== todayStr);
-                feedbackMsg = "已取消今天的完成狀態。";
-            }
-            try {
-                await updateDoc(habitDocRef, { history: newHistory.sort() });
-                document.getElementById('feedback').textContent = feedbackMsg;
-                setTimeout(() => document.getElementById('feedback').textContent = '', 3000);
-            } catch (e) {
-                console.error("更新文件時發生錯誤: ", e);
-                document.getElementById('feedback').textContent = "⚠️ 更新狀態失敗。";
-            }
-        };
-
-        const removeHabit = async (habitId) => {
-             if (!db || !userId) return;
-             try {
-                const habitDocRef = doc(db, `artifacts/${appId}/users/${userId}/habits`, habitId);
-                await deleteDoc(habitDocRef);
-                document.getElementById('feedback').textContent = "🗑️ 習慣已移除。";
-                setTimeout(() => document.getElementById('feedback').textContent = '', 3000);
-            } catch (e) {
-                console.error("移除文件時發生錯誤: ", e);
-                document.getElementById('feedback').textContent = "⚠️ 移除習慣失敗。";
+                radarChartInstance = new Chart(ctx, {
+                    type: 'radar',
+                    data: {
+                        labels: Object.values(ATTRIBUTES).map(a => a.label),
+                        datasets: [{
+                            label: 'Stats',
+                            data: data,
+                            backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                            borderColor: '#818cf8',
+                            pointBackgroundColor: '#fff',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        scales: { r: { ticks: { display: false }, grid: { color: 'rgba(255,255,255,0.1)' }, pointLabels: { color: '#cbd5e1', font: {size: 10} }, min: 0, max: maxVal + 5 } },
+                        plugins: { legend: { display: false } }
+                    }
+                });
             }
         };
 
-        // --- 定義 STEPS 陣列 ---
+        // Form Logic (Simplified for brevity but functional)
+        let tempFormData = {};
+        let currentStep = 0;
         const STEPS = [
-            {
-                id: 'habit-goal',
-                label: '想建立什麼樣的習慣？',
-                placeholder: '例如：閱讀',
-                subtext: '這是一個總體的目標習慣 (大方向)',
-                type: 'text',
-                required: true,
-                nextHint: '下一步：定義你的身份目標 (法則 1)',
-            },
-            {
-                id: 'identity-goal',
-                label: '透過這個習慣，我想成為什麼樣的人？ (法則 1: 讓它顯而易見)',
-                placeholder: '例如：一位有知識的讀者',
-                subtext: '這個身份目標能幫助你堅定信念',
-                type: 'text',
-                required: true,
-                nextHint: '下一步：設定你的習慣觸發門檻 (法則 1)',
-            },
-            {
-                id: 'habit-threshold',
-                label: '這個習慣的觸發門檻是什麼？ (法則 1: 讓它顯而易見)',
-                placeholder: '例如：吃完晚餐後，坐在書桌前',
-                subtext: '什麼時候/地點/事件會提醒你開始？',
-                type: 'text',
-                required: true,
-                nextHint: '下一步：詳細描述你的最小啟動行為 (法則 3)',
-            },
-            {
-                id: 'minimum-action',
-                label: '詳細描述這個習慣的最小啟動行為 (法則 3: 讓它輕而易舉)',
-                placeholder: '例如：打開書本，閱讀一頁',
-                subtext: '越小越好，讓你無法拒絕！',
-                type: 'text',
-                required: true,
-                nextHint: '下一步：設定提醒時間 (法則 1)',
-            },
-            {
-                id: 'reminder-time',
-                label: '希望什麼時候提醒自己？ (法則 1: 讓它顯而易見)',
-                placeholder: '19:00',
-                subtext: '你可以設定具體時間',
-                type: 'time',
-                required: false,
-                nextHint: '下一步：設定你的立即獎賞 (法則 2)',
-            },
-            {
-                id: 'habit-reward',
-                label: '完成後，給自己什麼立即獎賞？ (法則 2: 讓它有吸引力)',
-                placeholder: '例如：可以看一集 Netflix',
-                subtext: '讓大腦獲得即時滿足，強化行為',
-                type: 'text',
-                required: false,
-                nextHint: '下一步：設定長期稱號 (法則 4)',
-            },
-            {
-                id: 'streak-title',
-                label: '當達成目標時，想獲得什麼稱號？ (法則 4: 讓它令人滿意)',
-                placeholder: '例如：知識探險家 / 自律大師',
-                subtext: '這個稱號能強化你的新身份，給你成就感',
-                type: 'text',
-                required: false,
-                nextHint: '點擊提交完成習慣設定',
-                isLastStep: true,
-            },
+            { id: 'habit-goal', label: '修練目標', type: 'text' },
+            { id: 'habit-attribute', label: '能力', type: 'select', options: Object.keys(ATTRIBUTES).map(k => ({val: k, txt: ATTRIBUTES[k].label})) },
+            { id: 'minimum-action', label: '最小行動', type: 'text' }
         ];
 
-        // --- 定義 renderStep 函數 (必須在它被呼叫之前定義) ---
-        const renderStep = (stepIndex) => {
-            const stepContent = document.getElementById('step-content');
-            const prevBtn = document.getElementById('prev-btn');
-            const nextBtn = document.getElementById('next-btn');
-            const progressIndicator = document.getElementById('progress-indicator');
-            const feedbackElement = document.getElementById('feedback-hint');
-            const step = STEPS[stepIndex];
-
-            if (!step) return;
-
-            const initialValue = tempFormData[step.id] || (step.type === 'time' ? '19:00' : '');
-
-            let inputHtml;
-            if (step.type === 'time') {
-                inputHtml = `
-                    <input type="time" id="${step.id}" value="${initialValue}" step="300"
-                           class="w-full px-4 py-3 rounded-lg bg-gray-600 border border-gray-500 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
-                `;
-            } else { 
-                inputHtml = `
-                    <input type="text" id="${step.id}" placeholder="${step.placeholder}" value="${initialValue}" ${step.required ? 'required' : ''}
-                           class="w-full px-4 py-3 rounded-lg bg-gray-600 border border-gray-500 text-white placeholder-gray-400 focus:ring-indigo-500 focus:border-indigo-500">
-                `;
-            }
-            
-            stepContent.innerHTML = `
-                <div class="animate-in fade-in slide-in-from-right-1 duration-300">
-                    <label for="${step.id}" class="block text-sm font-medium text-gray-300 mb-1">${step.label}</label>
-                    ${inputHtml}
-                    <p class="text-xs text-gray-400 mt-1">${step.subtext}</p>
-                </div>
-            `;
-            
-            document.getElementById(step.id)?.focus();
-            progressIndicator.innerHTML = STEPS.map((s, index) => `
-                <div class="w-3 h-3 rounded-full transition-colors duration-300 ${index === stepIndex ? 'bg-indigo-500' : 'bg-gray-500'}"></div>
-            `).join('');
-
-            prevBtn.disabled = stepIndex === 0;
-            nextBtn.textContent = step.isLastStep ? '提交並開始追蹤' : '下一步';
-            nextBtn.classList.toggle('bg-indigo-600', !step.isLastStep);
-            nextBtn.classList.toggle('hover:bg-indigo-700', !step.isLastStep);
-            nextBtn.classList.toggle('bg-green-600', step.isLastStep);
-            nextBtn.classList.toggle('hover:bg-green-700', step.isLastStep);
-            feedbackElement.textContent = step.nextHint;
+        const renderStep = () => {
+            const step = STEPS[currentStep];
+            const content = document.getElementById('step-content');
+            let inputHtml = step.type === 'select' 
+                ? `<select id="${step.id}" class="w-full p-2 bg-gray-600 rounded text-white">${step.options.map(o=>`<option value="${o.val}">${o.txt}</option>`).join('')}</select>`
+                : `<input id="${step.id}" class="w-full p-2 bg-gray-600 rounded text-white placeholder-gray-400" placeholder="${step.label}...">`;
+            content.innerHTML = `<label class="text-gray-300 text-sm block mb-1">${step.label}</label>${inputHtml}`;
+            document.getElementById('next-btn').textContent = currentStep === STEPS.length - 1 ? '完成' : '下一步';
         };
 
-        // --- 定義 handleNext, handlePrevious, toggleNewHabitForm (必須在它被呼叫之前定義) ---
-        const handleNext = () => {
-            const currentStepData = STEPS[currentStep];
-            const inputElement = document.getElementById(currentStepData.id);
-            const feedbackElement = document.getElementById('feedback');
-            
-            if (currentStepData.required && (!inputElement || !inputElement.value.trim())) {
-                feedbackElement.textContent = `⚠️ 請輸入 ${currentStepData.label.split('(')[0].trim()}。`;
-                setTimeout(() => feedbackElement.textContent = '', 3000);
-                return;
-            }
-            tempFormData[currentStepData.id] = inputElement ? inputElement.value.trim() : '';
-
-            if (currentStepData.isLastStep) {
-                const goal = tempFormData['habit-goal'];
-                const identity = tempFormData['identity-goal'];
-                const threshold = tempFormData['habit-threshold'];
-                const minimumAction = tempFormData['minimum-action'];
-                const reminderTime = tempFormData['reminder-time'];
-                const reward = tempFormData['habit-reward'];
-                const streakTitle = tempFormData['streak-title'];
-                
-                addHabit(goal, identity, threshold, minimumAction, reminderTime, reward, streakTitle);
-
-                currentStep = 0;
-                tempFormData = {};
-                toggleNewHabitForm(false);
-                return;
-            } else {
-                currentStep++;
-                renderStep(currentStep);
-            }
+        document.getElementById('toggle-form-btn').onclick = () => {
+            const c = document.getElementById('new-habit-form-container');
+            const show = c.classList.contains('max-h-0');
+            c.classList.toggle('max-h-0'); c.classList.toggle('opacity-0'); c.classList.toggle('invisible');
+            if(show) { currentStep = 0; renderStep(); }
         };
 
-        const handlePrevious = () => {
-            if (currentStep > 0) {
-                currentStep--;
-                renderStep(currentStep);
-            }
-        };
-
-        const toggleNewHabitForm = (force) => {
-            const formContainer = document.getElementById('new-habit-form-container');
-            const button = document.getElementById('toggle-form-btn');
-            
-            const isHidden = formContainer.classList.contains('max-h-0');
-            let newState = force !== undefined ? force : isHidden;
-
-            if (newState) {
-                formContainer.classList.remove('max-h-0', 'invisible', 'opacity-0');
-                formContainer.classList.add('max-h-96', 'opacity-100');
-                button.textContent = '取消建立';
-                button.classList.remove('bg-green-600');
-                button.classList.add('bg-gray-600');
-                
-                currentStep = 0;
-                tempFormData = {};
-                renderStep(currentStep);
-            } else {
-                formContainer.classList.remove('max-h-96', 'opacity-100');
-                formContainer.classList.add('max-h-0', 'invisible', 'opacity-0');
-                button.textContent = '➕ 建立新習慣';
-                button.classList.remove('bg-green-600');
-                button.classList.add('bg-gray-600');
+        document.getElementById('next-btn').onclick = async () => {
+            const val = document.getElementById(STEPS[currentStep].id).value;
+            tempFormData[STEPS[currentStep].id] = val;
+            if(currentStep < STEPS.length - 1) { currentStep++; renderStep(); }
+            else {
+                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/habits`), {
+                    goal: tempFormData['habit-goal'], attribute: tempFormData['habit-attribute'],
+                    minimumAction: tempFormData['minimum-action'], history: [], createdAt: new Date()
+                });
+                document.getElementById('toggle-form-btn').click();
             }
         };
         
-        // --- 定義 handleAuthAction, renderAuthUI (必須在它被呼叫之前定義) ---
-        async function handleAuthAction() {
-            const currentUser = auth.currentUser;
-            const feedbackElement = document.getElementById('feedback');
-            const authButton = document.getElementById('auth-button');
+        document.getElementById('open-inventory-btn').onclick = () => document.getElementById('inventory-modal').classList.remove('hidden');
 
-            authButton.disabled = true; 
-            feedbackElement.textContent = "處理中...";
-
-            try {
-                if (!currentUser || currentUser.isAnonymous) { 
-                    await signInWithPopup(auth, googleProvider);
-                    feedbackElement.textContent = "✅ Google 登入成功！";
-                } else { 
-                    await signOut(auth);
-                    feedbackElement.textContent = "✅ 已登出。";
-                }
-            } catch (error) {
-                console.error("認證操作失敗:", error);
-                feedbackElement.textContent = `⚠️ 操作失敗: ${error.message}`;
-                if (error.code === 'auth/credential-already-in-use') {
-                    feedbackElement.textContent = "此 Google 帳戶已被其他 Firebase 帳戶使用。";
-                } else if (error.code === 'auth/popup-closed-by-user') {
-                    feedbackElement.textContent = "登入視窗已關閉。";
-                } else if (error.code === 'auth/account-exists-with-different-credential') {
-                    feedbackElement.textContent = "這個 Google 帳戶已經連結到其他帳戶。";
-                }
-            } finally {
-                authButton.disabled = false; 
-                setTimeout(() => feedbackElement.textContent = '', 5000); 
-            }
-        }
-
-        function renderAuthUI(user) {
-            const authContainer = document.getElementById('auth-ui-container');
-            if (!authContainer) { 
-                console.warn("auth-ui-container not found in DOM.");
-                return;
-            } 
-
-            authContainer.innerHTML = ''; 
-
-            if (!user || user.isAnonymous) { 
-                authContainer.innerHTML = `
-                    <button id="auth-button" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
-                        登入
-                    </button>
-                `;
-            } else { 
-                const displayName = user.displayName || user.email || '使用者';
-                authContainer.innerHTML = `
-                    <div class="flex items-center space-x-2">
-                        <span class="text-sm font-medium text-gray-300 hidden sm:block">哈囉, ${displayName}</span>
-                        <button id="auth-button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-full transition duration-300 shadow-md text-sm">
-                            登出
-                        </button>
-                    </div>
-                `;
-            }
-            document.getElementById('auth-button')?.addEventListener('click', handleAuthAction);
-        }
-
-        // --- 定義 initFirebaseAndApp 函數 (必須在它被呼叫之前定義) ---
-        const initFirebaseAndApp = () => {
-            if (!Object.keys(firebaseConfig).length || !firebaseConfig.apiKey) {
-                console.error("Firebase 配置遺失。無法初始化 Firebase。");
-                document.getElementById('app-status').textContent = "⚠️ 錯誤：Firebase 配置遺失。";
-                return;
-            }
-
-            try {
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                analytics = getAnalytics(app); 
-                messaging = getMessaging(app); 
-
-                document.getElementById('app-status').textContent = "應用程式狀態: 初始化中...";
-                
-                const authenticate = async () => {
-                    try {
-                        if (initialAuthToken) { 
-                            await signInWithCustomToken(auth, initialAuthToken);
-                        } else { 
-                            await signInAnonymously(auth);
-                        }
-                    } catch (error) {
-                        console.error("認證失敗:", error);
-                        document.getElementById('app-status').textContent = `❌ 認證失敗: ${error.code}`;
-                        try {
-                             await signInAnonymously(auth); 
-                        } catch(anonError) {
-                            console.error("匿名登入也失敗了:", anonError);
-                        }
-                    }
-                };
-
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        isAuthReady = true;
-                        document.getElementById('app-status').textContent = "應用程式狀態: 連線成功";
-                        document.getElementById('user-id-display').textContent = `使用者 ID: ${userId}`;
-                        loadHabits(); 
-                    } else {
-                        if (userId === null) { 
-                            document.getElementById('app-status').textContent = "應用程式狀態: 登入中...";
-                            authenticate(); 
-                        }
-                    }
-                    renderAuthUI(user); 
-                });
-                
-                authenticate();
-
-            } catch (error) {
-                console.error("Firebase 初始化失敗:", error);
-                document.getElementById('app-status').textContent = `❌ 初始化失敗: ${error.message}`;
-            }
-
-        };
-
-        // --- window.onload 函數，最後執行，負責綁定事件和啟動應用程式 ---
+        // Init
         window.onload = () => {
-            setupPWA(); 
-            initFirebaseAndApp();
-            
-            document.getElementById('new-habit-form').addEventListener('submit', (e) => e.preventDefault()); 
-            document.getElementById('toggle-form-btn').addEventListener('click', () => toggleNewHabitForm());
-            
-            document.getElementById('next-btn').addEventListener('click', handleNext);
-            document.getElementById('prev-btn').addEventListener('click', handlePrevious);
-            
-            // 這裡不再呼叫 renderStep，因為 toggleNewHabitForm 會在展開時呼叫它
-            // 如果你希望在頁面載入時就看到第一個問題，可以將這行取消註解
-            // renderStep(currentStep); 
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            onAuthStateChanged(auth, u => {
+                if(u) { 
+                    userId = u.uid; 
+                    onSnapshot(collection(db, `artifacts/${appId}/users/${userId}/habits`), s => {
+                        const h = []; s.forEach(d => h.push({id: d.id, ...d.data()}));
+                        renderHabits(h);
+                    });
+                    loadInventory();
+                    loadEquipment(); // 載入裝備
+                    document.getElementById('auth-ui-container').innerHTML = `<button onclick="location.reload()" class="text-[10px] text-gray-500">REFRESH</button>`;
+                } else signInAnonymously(auth);
+            });
         };
-
     </script>
 </body>
 </html>
